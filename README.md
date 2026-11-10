@@ -31,7 +31,7 @@ Each has its own weapon and three abilities (secondary, utility, special):
 - Robots sometimes drop power-ups: **Rage** (more damage), **Haste** (speed and fire rate) and **Aegis** (damage shield).
 
 ## Arenas
-Neon Rooftop, Foundry (lava and catwalks), Frost Port (shipping containers) and Dune Ruins. Each can have clear, rain, snow or storm weather, and day, dusk or night lighting.
+Neon Rooftop, Molten Foundry (lava and catwalks), Frost Yard (shipping containers) and Desert Ruins. Each can have clear, rain, snow or storm weather, and day, dusk or night lighting.
 
 ## Controls
 - **Left side of the screen:** drag to move.
