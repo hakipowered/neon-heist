@@ -1,31 +1,33 @@
-# Neon Heist
+# Iron Tide
 
-A fast online 1v1 arena duel for two phones. Built for Galaxy Z Fold phones: the arena re-fits instantly when you fold, unfold or rotate.
+Online co-op third-person shooter for two Android phones. You and your partner hold a neon arena against waves of killer robots. Built for Galaxy Z Fold phones, so the view re-fits when you fold, unfold or rotate.
 
-## How to play
-- **Move:** touch anywhere and drag (a joystick appears under your thumb).
-- **Dash:** the pink button. You hold 2 charges that refill over time.
-- **Ram:** dash into your rival to steal a quarter of their cores. One comes straight to you, the rest scatter.
-- **Cores** = 1, **Prisms** = 5 (they vanish fast).
-- **Pickups:** 🛡 Shield (blocks one ram and stuns the attacker), ⚡ Overdrive (faster, quicker dash refills), 🧲 Magnet (pulls cores in).
-- **Black hole** opens with 35s left: it pulls you in, and touching it costs a third of your cores.
-- **Last 15s:** everything is worth double. Win 2 of 3 rounds to take the match.
+**Play:** https://hakipowered.github.io/neon-heist/
+(The older 2D duel, Neon Heist, is still at `/classic/`.)
 
 ## Install on Android (both phones)
-1. Open the game link in **Chrome**.
-2. Tap the **⋮** menu, then **Add to Home screen** (or **Install app**).
-3. Launch it from the home screen icon. It runs full screen.
+1. Open the link in **Chrome**.
+2. Tap **⋮**, then **Add to Home screen** (or **Install app**).
+3. Launch it from the new icon. It runs full screen. Landscape plays best, but portrait works too.
 
-## Play online
-1. Player 1 taps **Create match** and gets a 4-letter code (or taps **Share code** to send a link).
-2. Player 2 taps **Join match** and types the code (or just opens the shared link).
-3. The match starts as soon as both are connected. The creator can tap **Rematch** at the end.
+## Start a co-op game
+1. One player taps **Host co-op game** and gets a 4-letter code (**Share code** sends a link).
+2. The other taps **Join co-op game** and enters the code, or opens the shared link.
+3. Wave 1 starts 5 seconds later. **Play solo** works offline-style with no partner.
 
-Works on Wi-Fi or mobile data, in any country. No accounts, no ads, no cost.
+## Controls
+- **Left side of the screen:** drag to move.
+- **Right side:** drag to aim. You can also drag on the FIRE button to aim while shooting. Light aim assist is on for touch.
+- **FIRE / JUMP / SWAP** buttons. Green rings are jump pads to the high ground.
+- Keyboard and mouse also work: WASD, mouse (click to lock), Space, Q, B.
 
-## How it works (tech)
-- One static web page (`index.html`), no server of our own.
-- Phones connect directly peer-to-peer with WebRTC via PeerJS (`peerjs.min.js`, MIT). The free PeerJS cloud service only introduces the two phones (and relays traffic if a direct link is impossible).
-- The match creator's phone runs the game simulation; the other phone sends its controls and draws what it receives (30 updates/s, smoothed).
-- `sw.js` + `manifest.webmanifest` make it installable and fast to open.
-- Testing tip: `?ps=localhost:9000` points it at your own PeerJS server.
+## The game
+- **Robots:** drones (fly and snipe), grunts (shoot bolts), rushers (charge and explode), tanks (lob mortars from wave 4), and a **boss every 5 waves**.
+- **Scrap ⬢** comes from kills and from clearing waves. Between waves, open **Upgrades** to buy the Scattergun, Rail Gun (pierces) or Rocket Launcher (splash and rocket jumps), plus damage, fire rate, max health, plating, speed, ammo and repairs.
+- **Down, not out:** at 0 health you go down. Your partner revives you by standing next to you for 3 seconds. You bleed out after 25 seconds, and everyone comes back when the wave is cleared. If you're both down, it's game over.
+- Robots get tougher every wave and hit harder in co-op.
+
+## Tech
+- Plain static site: `index.html` + `game.js` (ES module), Three.js r170 with bloom (`lib/`), PeerJS for the peer-to-peer link (`lib/peerjs.min.js`, MIT).
+- The host phone simulates robots, waves and pickups. Each phone owns its own player (movement, health, hit detection, favouring the shooter) and sends ~20 updates/s.
+- Quality drops automatically (bloom, then shadows) if a phone can't hold the frame rate. `?lowfx=1` forces low effects, and `?ps=host:port` uses your own PeerJS server.
