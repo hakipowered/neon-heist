@@ -2009,7 +2009,12 @@ const vArr = v => [r2(v.x), r2(v.y), r2(v.z)];
 const arrV = a => V(a[0], a[1], a[2]);
 function netSend(m) { if (conn && conn.open) { try { conn.send(m); } catch (e) {} } }
 function peerOptions() {
-  const o = { debug: 1 };
+  // Extra relay (TURN) servers, including TCP 443, so phones on mobile data or strict Wi-Fi can still connect.
+  const o = { debug: 1, config: { iceServers: [
+    { urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun.cloudflare.com:3478" },
+    { urls: ["turn:eu-0.turn.peerjs.com:3478", "turn:us-0.turn.peerjs.com:3478"], username: "peerjs", credential: "peerjsp" },
+    { urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443", "turn:openrelay.metered.ca:443?transport=tcp"], username: "openrelayproject", credential: "openrelayproject" }
+  ], sdpSemantics: "unified-plan" } };
   const ps = qs.get("ps");
   if (ps) { const [h, pt] = ps.split(":"); o.host = h; o.port = +(pt || 443); o.path = "/"; o.secure = !(h === "localhost" || h === "127.0.0.1"); }
   return o;
@@ -2028,7 +2033,7 @@ function startHost(tries = 0) {
   cleanup(); const my = session; mode = "host"; myIdx = 0; showScreen("sWait"); $("myCode").textContent = "····"; $("waitMsg").textContent = "Getting a code…"; startHost.code = null;
   const code = makeCode();
   peer = new Peer(ID_PREFIX + code, peerOptions());
-  peer.on("open", () => { if (my !== session) return; $("myCode").textContent = code; $("waitMsg").textContent = "Send this code to your partner. The game starts when they join. Arena: " + ARENAS[arenaCfg.a].name + "."; startHost.code = code; });
+  peer.on("open", () => { if (my !== session) return; $("myCode").textContent = code; $("waitMsg").textContent = "Send this code to your partner, then come straight back and keep this screen open until they join (Android pauses the game in the background). Arena: " + ARENAS[arenaCfg.a].name + "."; startHost.code = code; });
   peer.on("error", e => { if (my !== session) return; if (e.type === "unavailable-id" && tries < 5) return startHost(tries + 1); if (G.ph !== "menu") return; $("waitMsg").textContent = "Couldn't reach the game server (" + e.type + "). Check your connection and try again."; });
   peer.on("disconnected", () => { try { if (my === session && peer && !peer.destroyed) peer.reconnect(); } catch (e) {} });
   peer.on("connection", c => { if (my !== session) return; if (conn && conn.open) { c.on("open", () => { c.send({ t: "full" }); setTimeout(() => c.close(), 500); }); return; } conn = c; wireConn(c, my); });
@@ -2040,8 +2045,8 @@ function startJoin(code) {
   peer = new Peer(undefined, peerOptions());
   let opened = false;
   const fail = msg => { if (my !== session || opened) return; backToMenu(); showScreen("sJoin"); $("joinErr").textContent = msg; };
-  peer.on("open", () => { if (my !== session) return; conn = peer.connect(ID_PREFIX + code, { reliable: true }); wireConn(conn, my); conn.on("open", () => { opened = true; $("busyMsg").textContent = "Connected. Starting…"; }); setTimeout(() => fail("Couldn't connect. Check the code and try again."), 20000); });
-  peer.on("error", e => { if (e.type === "peer-unavailable") fail("No game with code " + code + ". Check the letters."); else if (!opened) fail("Couldn't reach the game server (" + e.type + ")."); });
+  peer.on("open", () => { if (my !== session) return; conn = peer.connect(ID_PREFIX + code, { reliable: true }); wireConn(conn, my); conn.on("open", () => { opened = true; $("busyMsg").textContent = "Connected. Starting…"; }); setTimeout(() => fail("Found the game but couldn't link the two phones. Try again, or both switch to Wi-Fi (or both to mobile data)."), 25000); });
+  peer.on("error", e => { if (e.type === "peer-unavailable") fail("No game with code " + code + ". Check the letters, and make sure the host has Iron Tide open on screen (not in the background)."); else if (!opened) fail("Couldn't reach the game server (" + e.type + ")."); });
 }
 function wireConn(c, my) {
   c.on("open", () => { if (my === session) { c.send({ t: "hi", name: nameOr(myName, mode === "host" ? "Player 1" : "Player 2"), sv: mySurv }); if (mode === "host") c.send({ t: "cfg", ...arenaCfg }); } });
@@ -2410,7 +2415,7 @@ addEventListener("mouseup", e => { if (e.button === 0 && !fireP) input.fire = fa
 let wake = null;
 async function requestWake() { try { if ("wakeLock" in navigator && !wake) { wake = await navigator.wakeLock.request("screen"); wake.addEventListener("release", () => wake = null); } } catch (e) {} }
 function releaseWake() { try { wake && wake.release(); } catch (e) {} wake = null; }
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && mode) requestWake(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && mode) { requestWake(); try { if (peer && peer.disconnected && !peer.destroyed) peer.reconnect(); else if (mode === "host" && (!peer || peer.destroyed) && !(conn && conn.open)) startHost(); } catch (e) {} } });
 
 // ===================================================================== main loop
 let last = performance.now(), acc = 0, fpsT = 0, fpsN = 0, quality = 2;
