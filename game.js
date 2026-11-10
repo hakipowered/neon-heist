@@ -2029,14 +2029,19 @@ function cleanup() {
   G.ph = "menu"; lastPh = null; MUS.level = 0; releaseWake(); exitLock();
 }
 function backToMenu(msg) { cleanup(); showScreen("sMenu"); showBest(); if (msg) toast(msg, 3000); }
-const BUILD = "3.5"; const FIXED_CODE = "UHHF"; // permanent room code for Bulmaim's games
+const BUILD = "3.6"; const FIXED_CODE = "UHHF"; // permanent room code for Bulmaim's games
 function makeCode() { if (FIXED_CODE) return FIXED_CODE; let c = ""; for (let i = 0; i < 4; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]; return c; }
 
 // ---- Fallback relay: when phones can't link directly (strict mobile/Wi-Fi networks), send game
 // messages through a free public MQTT broker instead. Both phones keep their own simulation as before.
-const MQ_URLS = qs.get("mq") ? [qs.get("mq")] : ["wss://broker.emqx.io:8084/mqtt", "wss://broker.hivemq.com:8884/mqtt"];
+// Brokers on the standard web port (443) first, since some mobile networks block unusual ports.
+const MQ_SERVERS = qs.get("mq") ? [{ url: qs.get("mq") }] : [
+  { url: "wss://mqtt.eclipseprojects.io:443/mqtt" },
+  { url: "wss://public.cloud.shiftr.io:443", username: "public", password: "public" },
+  { url: "wss://broker.emqx.io:8084/mqtt" },
+  { url: "wss://broker.hivemq.com:8884/mqtt" }];
 const MQ_ROOT = "irontide-v3-relay-k7/";
-let relays = [];
+let relays = [], relayUp = 0;
 function makeRelayConn(client, topicOut, topicIn, tag) {
   const h = {}, c = { open: false, relay: true, tag, lastIn: performance.now() };
   c.on = (ev, fn) => { (h[ev] = h[ev] || []).push(fn); return c; };
@@ -2047,14 +2052,16 @@ function makeRelayConn(client, topicOut, topicIn, tag) {
   c.start = () => { c.open = true; c.lastIn = performance.now(); c.ping = setInterval(() => { if (!c.open) return; client.publish(topicOut, JSON.stringify({ g: tag, p: 1 })); if (performance.now() - c.lastIn > 12000) c.close(); }, 2000); c.emit("open"); };
   return c;
 }
-function mqConnect(url) { return mqtt.connect(url, { clean: true, connectTimeout: 8000, reconnectPeriod: 2000, keepalive: 20, clientId: "it" + Math.random().toString(36).slice(2, 12) }); }
-function stopRelays() { relays.forEach(r => { try { r.end(true); } catch (e) {} }); relays = []; }
+function mqConnect(sv) { return mqtt.connect(sv.url, { username: sv.username, password: sv.password, clean: true, connectTimeout: 8000, reconnectPeriod: 2000, keepalive: 20, clientId: "it" + Math.random().toString(36).slice(2, 12) }); }
+function stopRelays() { relays.forEach(r => { try { r.end(true); } catch (e) {} }); relays = []; relayUp = 0; }
 // Host: listen on every broker for a guest that couldn't link directly.
 function hostRelayListen(code, my) {
   if (typeof mqtt === "undefined") return;
-  for (const url of MQ_URLS) {
-    const cl = mqConnect(url); relays.push(cl); let rc = null;
-    cl.on("connect", () => cl.subscribe(MQ_ROOT + code + "/g2h"));
+  const status = () => { const w = $("waitMsg"); if (w && mode === "host" && !mate.on) { w.dataset.relay = relayUp + "/" + MQ_SERVERS.length; $("relayNote") && ($("relayNote").textContent = "Backup relay: " + relayUp + "/" + MQ_SERVERS.length + " servers connected"); } };
+  for (const sv of MQ_SERVERS) {
+    const cl = mqConnect(sv); relays.push(cl); let rc = null, up = false;
+    cl.on("connect", () => { cl.subscribe(MQ_ROOT + code + "/g2h"); if (!up) { up = true; relayUp++; status(); } });
+    cl.on("close", () => { if (up) { up = false; relayUp--; status(); } });
     cl.on("message", (t, buf) => {
       if (my !== session) return; let d; try { d = JSON.parse(buf.toString()); } catch (e) { return; }
       if (d.join) {
@@ -2067,24 +2074,25 @@ function hostRelayListen(code, my) {
     });
   }
 }
-// Guest: try each broker in turn.
+// Guest: connect to every broker at once; the first one the host answers on wins.
 function guestRelayJoin(code, my, onFail) {
-  if (typeof mqtt === "undefined") return onFail();
-  const tag = Math.random().toString(36).slice(2, 10); let i = 0;
-  const tryNext = () => {
-    if (my !== session) return; if (i >= MQ_URLS.length) return onFail();
-    const url = MQ_URLS[i++], cl = mqConnect(url); relays.push(cl); let rc = null, done = false;
-    const giveUp = setTimeout(() => { if (!done) { done = true; try { cl.end(true); } catch (e) {} tryNext(); } }, 9000);
-    cl.on("connect", () => { if (rc) return; cl.subscribe(MQ_ROOT + code + "/h2g", () => cl.publish(MQ_ROOT + code + "/g2h", JSON.stringify({ join: tag }))); });
+  if (typeof mqtt === "undefined") return onFail(0);
+  const tag = Math.random().toString(36).slice(2, 10); let rc = null, reached = 0, finished = false;
+  const mine = [];
+  const end = () => { finished = true; clearTimeout(giveUp); mine.forEach(c => { if (!rc || c !== rc.client) { try { c.end(true); } catch (e) {} } }); };
+  const giveUp = setTimeout(() => { if (!rc && my === session) { end(); onFail(reached); } }, 25000);
+  for (const sv of MQ_SERVERS) {
+    const cl = mqConnect(sv); relays.push(cl); mine.push(cl); let counted = false;
+    cl.on("connect", () => { if (finished) return; if (!counted) { counted = true; reached++; $("busyMsg").textContent = "Connecting through the relay… (" + reached + " server" + (reached > 1 ? "s" : "") + " reached)"; } cl.subscribe(MQ_ROOT + code + "/h2g", () => cl.publish(MQ_ROOT + code + "/g2h", JSON.stringify({ join: tag }))); });
     cl.on("message", (t, buf) => {
       if (my !== session) return; let d; try { d = JSON.parse(buf.toString()); } catch (e) { return; }
       if (d.g !== tag) return;
-      if (d.full) { done = true; clearTimeout(giveUp); return backToMenu("That game already has two players."); }
-      if (d.ok && !rc) { done = true; clearTimeout(giveUp); rc = makeRelayConn(cl, MQ_ROOT + code + "/g2h", null, tag); conn = rc; wireConn(rc, my); rc.start(); return; }
-      if (rc) rc.inbound(d);
+      if (rc) { if (cl === rc.client) rc.inbound(d); return; }
+      if (finished) return;
+      if (d.full) { end(); return backToMenu("That game already has two players."); }
+      if (d.ok) { rc = makeRelayConn(cl, MQ_ROOT + code + "/g2h", null, tag); rc.client = cl; end(); conn = rc; wireConn(rc, my); rc.start(); }
     });
-  };
-  tryNext();
+  }
 }
 function startHost(tries = 0) {
   cleanup(); const my = session; mode = "host"; myIdx = 0; showScreen("sWait"); $("myCode").textContent = "····"; $("waitMsg").textContent = "Getting a code…"; startHost.code = null;
@@ -2105,10 +2113,10 @@ function startJoin(code) {
     if (my !== session || opened || relayStarted) return; relayStarted = true;
     $("busyMsg").textContent = "Direct link blocked by the network. Connecting through the relay…";
     if (direct) { const d = direct; direct = null; if (conn === d) conn = null; try { d.close(); } catch (e) {} }
-    const failMsg = () => fail(notFound ? "No game with code " + code + ". Make sure the host has Iron Tide open on screen (not in the background)." : "Couldn't link the two phones, even through the relay. Check both phones have internet and try again.");
+    const failMsg = n => fail(notFound ? "No game with code " + code + ". Make sure the host has Iron Tide open on screen (not in the background)." : "Couldn't link the two phones, even through the relay (" + (n === undefined ? "?" : n) + "/" + MQ_SERVERS.length + " relay servers reached). Check the host's waiting screen and try again.");
     guestRelayJoin(code, my, failMsg);
     const chk = setInterval(() => { if (my !== session) return clearInterval(chk); if (conn && conn.open) { opened = true; clearInterval(chk); } }, 300);
-    setTimeout(() => { clearInterval(chk); failMsg(); }, 30000);
+    setTimeout(() => { clearInterval(chk); failMsg(); }, 32000);
   };
   setTimeout(startRelay, qs.get("relay") ? 500 : 9000);
   try { peer = new Peer(undefined, peerOptions()); } catch (e) { return startRelay(); }
