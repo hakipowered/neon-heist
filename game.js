@@ -2022,19 +2022,75 @@ function peerOptions() {
 function cleanup() {
   session++;
   try { conn && conn.close(); } catch (e) {} try { peer && peer.destroy(); } catch (e) {}
+  stopRelays();
   conn = peer = null; mode = null; mate.on = false; mate.buf = []; mate.ready = false;
   if (mate.model) { scene.remove(mate.model); scene.remove(mate.label); mate.model = null; }
   clearWorld();
   G.ph = "menu"; lastPh = null; MUS.level = 0; releaseWake(); exitLock();
 }
 function backToMenu(msg) { cleanup(); showScreen("sMenu"); showBest(); if (msg) toast(msg, 3000); }
-const FIXED_CODE = "UHHF"; // permanent room code for Bulmaim's games
+const BUILD = "3.5"; const FIXED_CODE = "UHHF"; // permanent room code for Bulmaim's games
 function makeCode() { if (FIXED_CODE) return FIXED_CODE; let c = ""; for (let i = 0; i < 4; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]; return c; }
+
+// ---- Fallback relay: when phones can't link directly (strict mobile/Wi-Fi networks), send game
+// messages through a free public MQTT broker instead. Both phones keep their own simulation as before.
+const MQ_URLS = qs.get("mq") ? [qs.get("mq")] : ["wss://broker.emqx.io:8084/mqtt", "wss://broker.hivemq.com:8884/mqtt"];
+const MQ_ROOT = "irontide-v3-relay-k7/";
+let relays = [];
+function makeRelayConn(client, topicOut, topicIn, tag) {
+  const h = {}, c = { open: false, relay: true, tag, lastIn: performance.now() };
+  c.on = (ev, fn) => { (h[ev] = h[ev] || []).push(fn); return c; };
+  c.emit = (ev, a) => (h[ev] || []).forEach(fn => { try { fn(a); } catch (e) { console.error(e); } });
+  c.send = m => { if (c.open) client.publish(topicOut, JSON.stringify({ g: tag, m })); };
+  c.close = () => { if (c.closed) return; c.closed = true; try { client.publish(topicOut, JSON.stringify({ g: tag, bye: 1 })); } catch (e) {} c.open = false; clearInterval(c.ping); c.emit("close"); };
+  c.inbound = d => { c.lastIn = performance.now(); if (d.bye) { if (!c.closed) { c.closed = true; c.open = false; clearInterval(c.ping); c.emit("close"); } return; } if (d.m !== undefined) c.emit("data", d.m); };
+  c.start = () => { c.open = true; c.lastIn = performance.now(); c.ping = setInterval(() => { if (!c.open) return; client.publish(topicOut, JSON.stringify({ g: tag, p: 1 })); if (performance.now() - c.lastIn > 12000) c.close(); }, 2000); c.emit("open"); };
+  return c;
+}
+function mqConnect(url) { return mqtt.connect(url, { clean: true, connectTimeout: 8000, reconnectPeriod: 2000, keepalive: 20, clientId: "it" + Math.random().toString(36).slice(2, 12) }); }
+function stopRelays() { relays.forEach(r => { try { r.end(true); } catch (e) {} }); relays = []; }
+// Host: listen on every broker for a guest that couldn't link directly.
+function hostRelayListen(code, my) {
+  if (typeof mqtt === "undefined") return;
+  for (const url of MQ_URLS) {
+    const cl = mqConnect(url); relays.push(cl); let rc = null;
+    cl.on("connect", () => cl.subscribe(MQ_ROOT + code + "/g2h"));
+    cl.on("message", (t, buf) => {
+      if (my !== session) return; let d; try { d = JSON.parse(buf.toString()); } catch (e) { return; }
+      if (d.join) {
+        if (conn && conn.open && !(conn.relay && conn.tag === d.join)) { cl.publish(MQ_ROOT + code + "/h2g", JSON.stringify({ g: d.join, full: 1 })); return; }
+        if (rc && rc.tag === d.join) return;
+        rc = makeRelayConn(cl, MQ_ROOT + code + "/h2g", null, d.join); conn = rc; wireConn(rc, my);
+        cl.publish(MQ_ROOT + code + "/h2g", JSON.stringify({ g: d.join, ok: 1 })); rc.start(); return;
+      }
+      if (rc && d.g === rc.tag) rc.inbound(d);
+    });
+  }
+}
+// Guest: try each broker in turn.
+function guestRelayJoin(code, my, onFail) {
+  if (typeof mqtt === "undefined") return onFail();
+  const tag = Math.random().toString(36).slice(2, 10); let i = 0;
+  const tryNext = () => {
+    if (my !== session) return; if (i >= MQ_URLS.length) return onFail();
+    const url = MQ_URLS[i++], cl = mqConnect(url); relays.push(cl); let rc = null, done = false;
+    const giveUp = setTimeout(() => { if (!done) { done = true; try { cl.end(true); } catch (e) {} tryNext(); } }, 9000);
+    cl.on("connect", () => { if (rc) return; cl.subscribe(MQ_ROOT + code + "/h2g", () => cl.publish(MQ_ROOT + code + "/g2h", JSON.stringify({ join: tag }))); });
+    cl.on("message", (t, buf) => {
+      if (my !== session) return; let d; try { d = JSON.parse(buf.toString()); } catch (e) { return; }
+      if (d.g !== tag) return;
+      if (d.full) { done = true; clearTimeout(giveUp); return backToMenu("That game already has two players."); }
+      if (d.ok && !rc) { done = true; clearTimeout(giveUp); rc = makeRelayConn(cl, MQ_ROOT + code + "/g2h", null, tag); conn = rc; wireConn(rc, my); rc.start(); return; }
+      if (rc) rc.inbound(d);
+    });
+  };
+  tryNext();
+}
 function startHost(tries = 0) {
   cleanup(); const my = session; mode = "host"; myIdx = 0; showScreen("sWait"); $("myCode").textContent = "····"; $("waitMsg").textContent = "Getting a code…"; startHost.code = null;
   const code = makeCode();
   peer = new Peer(ID_PREFIX + code, peerOptions());
-  peer.on("open", () => { if (my !== session) return; $("myCode").textContent = code; $("waitMsg").textContent = "Send this code to your partner, then come straight back and keep this screen open until they join (Android pauses the game in the background). Arena: " + ARENAS[arenaCfg.a].name + "."; startHost.code = code; });
+  peer.on("open", () => { if (my !== session) return; $("myCode").textContent = code; $("waitMsg").textContent = "Send this code to your partner, then come straight back and keep this screen open until they join (Android pauses the game in the background). Arena: " + ARENAS[arenaCfg.a].name + "."; startHost.code = code; if (!relays.length) hostRelayListen(code, my); });
   peer.on("error", e => { if (my !== session) return; if (e.type === "unavailable-id" && tries < 25) { $("waitMsg").textContent = "Freeing up code " + makeCode() + "… (" + (tries + 1) + ")"; setTimeout(() => { if (my === session) startHost(tries + 1); }, 3000); return; } if (G.ph !== "menu") return; $("waitMsg").textContent = "Couldn't reach the game server (" + e.type + "). Check your connection and try again."; });
   peer.on("disconnected", () => { try { if (my === session && peer && !peer.destroyed) peer.reconnect(); } catch (e) {} });
   peer.on("connection", c => { if (my !== session) return; if (conn && conn.open) { c.on("open", () => { c.send({ t: "full" }); setTimeout(() => c.close(), 500); }); return; } conn = c; wireConn(c, my); });
@@ -2043,16 +2099,30 @@ function startJoin(code) {
   code = (code || "").toUpperCase().replace(/[^A-Z]/g, "");
   if (code.length !== 4) { $("joinErr").textContent = "The code is 4 letters."; return; }
   cleanup(); const my = session; mode = "guest"; myIdx = 1; showScreen("sBusy"); $("busyTitle").textContent = "Joining " + code + "…"; $("busyMsg").textContent = "One moment.";
-  peer = new Peer(undefined, peerOptions());
-  let opened = false;
+  let opened = false, relayStarted = false, direct = null, notFound = false;
   const fail = msg => { if (my !== session || opened) return; backToMenu(); showScreen("sJoin"); $("joinErr").textContent = msg; };
-  peer.on("open", () => { if (my !== session) return; conn = peer.connect(ID_PREFIX + code, { reliable: true }); wireConn(conn, my); conn.on("open", () => { opened = true; $("busyMsg").textContent = "Connected. Starting…"; }); setTimeout(() => fail("Found the game but couldn't link the two phones. Try again, or both switch to Wi-Fi (or both to mobile data)."), 25000); });
-  peer.on("error", e => { if (e.type === "peer-unavailable") fail("No game with code " + code + ". Check the letters, and make sure the host has Iron Tide open on screen (not in the background)."); else if (!opened) fail("Couldn't reach the game server (" + e.type + ")."); });
+  const startRelay = () => {
+    if (my !== session || opened || relayStarted) return; relayStarted = true;
+    $("busyMsg").textContent = "Direct link blocked by the network. Connecting through the relay…";
+    if (direct) { const d = direct; direct = null; if (conn === d) conn = null; try { d.close(); } catch (e) {} }
+    const failMsg = () => fail(notFound ? "No game with code " + code + ". Make sure the host has Iron Tide open on screen (not in the background)." : "Couldn't link the two phones, even through the relay. Check both phones have internet and try again.");
+    guestRelayJoin(code, my, failMsg);
+    const chk = setInterval(() => { if (my !== session) return clearInterval(chk); if (conn && conn.open) { opened = true; clearInterval(chk); } }, 300);
+    setTimeout(() => { clearInterval(chk); failMsg(); }, 30000);
+  };
+  setTimeout(startRelay, qs.get("relay") ? 500 : 9000);
+  try { peer = new Peer(undefined, peerOptions()); } catch (e) { return startRelay(); }
+  peer.on("open", () => {
+    if (my !== session || relayStarted || qs.get("nodirect")) return;
+    direct = conn = peer.connect(ID_PREFIX + code, { reliable: true }); wireConn(conn, my);
+    const d = direct; d.on("open", () => { if (relayStarted || conn !== d) { try { d.close(); } catch (e) {} return; } opened = true; $("busyMsg").textContent = "Connected. Starting…"; });
+  });
+  peer.on("error", e => { if (opened || relayStarted) return; if (e.type === "peer-unavailable") notFound = true; startRelay(); });
 }
 function wireConn(c, my) {
   c.on("open", () => { if (my === session) { c.send({ t: "hi", name: nameOr(myName, mode === "host" ? "Player 1" : "Player 2"), sv: mySurv }); if (mode === "host") c.send({ t: "cfg", ...arenaCfg }); } });
-  c.on("data", m => { if (my === session) { try { onData(m); } catch (e) { console.error(e); } } });
-  c.on("close", () => { if (my === session && mode) backToMenu("Your partner left the game."); });
+  c.on("data", m => { if (my === session && c === conn) { try { onData(m); } catch (e) { console.error(e); } } });
+  c.on("close", () => { if (my !== session || !mode || c !== conn) return; if (mode === "host" && !mate.on) { conn = null; return; } backToMenu("Your partner left the game."); });
   c.on("error", () => {});
 }
 function remoteBoom(id, at) { const i = rockets.findIndex(r => r.id === id && !r.mine); if (i < 0) return; const r = rockets[i]; rockets.splice(i, 1); scene.remove(r.mesh); const P = PROJ[r.k]; explosion(at, r.k === "b" ? 2.4 : r.k === "h" ? 2 : P.R * 0.85, P.col); }
@@ -2063,7 +2133,7 @@ function onData(m) {
     case "hi": {
       mate.name = nameOr(String(m.name || ""), "Partner"); mate.surv = SURVIVORS[m.sv] ? m.sv : "vanguard";
       mate.col = mate.surv === mySurv ? SURVIVORS[mate.surv].alt : SURVIVORS[mate.surv].color;
-      mate.on = true; buildMate();
+      mate.on = true; buildMate(); if (conn && !conn.relay) stopRelays();
       if (G.ph === "menu") startGame();
       break;
     }
@@ -2500,3 +2570,4 @@ buildArena(arenaCfg);
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
 // test hooks
 window.__it = { G, me, mate, input, camera, chestOf, enemies, H, pickups, chests, hostSpawnEnemy, hostDamageEnemy, get barrels() { return barrels; }, hazards, lasers, corpses, ASSETS, MUS, TRACKS, scene, startHazard, hitBarrel, giveItem, buildArena, get arenaCfg() { return arenaCfg; }, get curA() { return world.userData.a || null; }, ST, recalc, hostChest, rockets, boxes, get mode() { return mode; }, get quality() { return quality; }, set surv(v) { mySurv = v; } };
+$("verTag") && ($("verTag").textContent = "VERSION " + BUILD + (FIXED_CODE ? " · CODE " + FIXED_CODE : ""));

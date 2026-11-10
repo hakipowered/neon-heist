@@ -255,7 +255,7 @@
 
 <div class="screen on" id="sMenu" style="background:linear-gradient(rgba(4,6,13,.25),rgba(4,6,13,.75))"><div class="card">
   <h1>IRON <span>TIDE</span></h1>
-  <div style="opacity:.55;font-size:12px;letter-spacing:2px;margin-top:-6px">VERSION 3</div>
+  <div style="opacity:.55;font-size:12px;letter-spacing:2px;margin-top:-6px"id="verTag">VERSION 3</div>
   <p>Team up and hold the arena against endless waves of killer robots.</p>
   <input id="nameIn" maxlength="12" placeholder="Your name">
   <button class="pri" id="bHost">Host co-op game</button>
@@ -335,6 +335,7 @@
 </div></div>
 
 <script src="lib/peerjs.min.js"></script>
-<script type="module" src="game.js"></script>
+<script src="lib/mqtt.min.js"></script>
+<script type="module" src="game.js?b=35"></script>
 </body>
 </html>
