@@ -3,7 +3,7 @@
 Online co-op third-person shooter for two Android phones. You and your partner hold a neon arena against waves of killer robots. Built for Galaxy Z Fold phones, so the view re-fits when you fold, unfold or rotate.
 
 **Play:** https://hakipowered.github.io/neon-heist/
-(The older 2D duel, Neon Heist, is still at `/classic/`.)
+(Older versions stay playable: the first 3D version is at `/v1/` and the 2D duel, Neon Heist, is at `/classic/`.)
 
 ## Install on Android (both phones)
 1. Open the link in **Chrome**.
