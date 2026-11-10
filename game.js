@@ -2028,13 +2028,14 @@ function cleanup() {
   G.ph = "menu"; lastPh = null; MUS.level = 0; releaseWake(); exitLock();
 }
 function backToMenu(msg) { cleanup(); showScreen("sMenu"); showBest(); if (msg) toast(msg, 3000); }
-function makeCode() { let c = ""; for (let i = 0; i < 4; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]; return c; }
+const FIXED_CODE = "UHHF"; // permanent room code for Bulmaim's games
+function makeCode() { if (FIXED_CODE) return FIXED_CODE; let c = ""; for (let i = 0; i < 4; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]; return c; }
 function startHost(tries = 0) {
   cleanup(); const my = session; mode = "host"; myIdx = 0; showScreen("sWait"); $("myCode").textContent = "····"; $("waitMsg").textContent = "Getting a code…"; startHost.code = null;
   const code = makeCode();
   peer = new Peer(ID_PREFIX + code, peerOptions());
   peer.on("open", () => { if (my !== session) return; $("myCode").textContent = code; $("waitMsg").textContent = "Send this code to your partner, then come straight back and keep this screen open until they join (Android pauses the game in the background). Arena: " + ARENAS[arenaCfg.a].name + "."; startHost.code = code; });
-  peer.on("error", e => { if (my !== session) return; if (e.type === "unavailable-id" && tries < 5) return startHost(tries + 1); if (G.ph !== "menu") return; $("waitMsg").textContent = "Couldn't reach the game server (" + e.type + "). Check your connection and try again."; });
+  peer.on("error", e => { if (my !== session) return; if (e.type === "unavailable-id" && tries < 25) { $("waitMsg").textContent = "Freeing up code " + makeCode() + "… (" + (tries + 1) + ")"; setTimeout(() => { if (my === session) startHost(tries + 1); }, 3000); return; } if (G.ph !== "menu") return; $("waitMsg").textContent = "Couldn't reach the game server (" + e.type + "). Check your connection and try again."; });
   peer.on("disconnected", () => { try { if (my === session && peer && !peer.destroyed) peer.reconnect(); } catch (e) {} });
   peer.on("connection", c => { if (my !== session) return; if (conn && conn.open) { c.on("open", () => { c.send({ t: "full" }); setTimeout(() => c.close(), 500); }); return; } conn = c; wireConn(c, my); });
 }
@@ -2210,6 +2211,7 @@ $("bShare").onclick = async () => {
   const url = location.origin + location.pathname + "?join=" + code, text = "Iron Tide co-op code: " + code;
   try { if (navigator.share) await navigator.share({ title: "Iron Tide", text, url }); else { await navigator.clipboard.writeText(text + " " + url); toast("Copied"); } } catch (e) {}
 };
+$("codeIn").value = FIXED_CODE || "";
 if (qs.get("join")) { $("codeIn").value = qs.get("join").toUpperCase().slice(0, 4); setupFor = "guest"; showScreen("sJoin"); }
 
 function showOver() {
