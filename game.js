@@ -122,7 +122,7 @@ const HITS = {
   walker: [[2.6, 1.6], [5.0, 2.7], [6.9, 1.0]],
   player: [[0.5, 0.42], [1.05, 0.42], [1.6, 0.3]]
 };
-for (const k in ETYPES) if (ETYPES[k].gltf) { const h = ETYPES[k].h; HITS[k] = [[0.2 * h, 0.17 * h], [0.46 * h, 0.21 * h], [0.78 * h, 0.2 * h]]; }
+for (const k in ETYPES) if (ETYPES[k].gltf) { const h = ETYPES[k].h; HITS[k] = [[0.28 * h, 0.2 * h], [0.57 * h, 0.22 * h], [0.89 * h, 0.15 * h]]; }
 
 // ===================================================================== profile
 let myName = store("it-name") || "", mySurv = SURVIVORS[store("it-surv")] ? store("it-surv") : "vanguard";
@@ -923,6 +923,68 @@ function animSoldier(m, vel, pitch, downed, dt, glow) {
 }
 const robotRed = glowMat(0xff1010, 1.8), robotOrange = glowMat(0xff5a00, 1.6), robotBody = new THREE.MeshStandardMaterial({ color: 0x8a8f9e, roughness: 0.3, metalness: 0.7 }), robotDark = new THREE.MeshStandardMaterial({ color: 0x2a2d38, roughness: 0.4, metalness: 0.6 });
 const shieldMat = new THREE.MeshStandardMaterial({ color: 0x4aa8ff, emissive: 0x2a7fff, emissiveIntensity: 1.2, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false, roughness: 0.2 });
+// ---- combat droids: troopers, snipers, bulwarks and the Titan share the players' animated body rig,
+// rebuilt in black chrome with glowing visors, armour plates and their own guns
+const DROID = {
+  grunt:   { tint: 0xd0602a, glow: 0xff3a1a, gun: "rifle" },
+  sniper:  { tint: 0x8a5cff, glow: 0xb06bff, gun: "rail" },
+  bulwark: { tint: 0x3c78c8, glow: 0x4aa8ff, gun: "shotgun" },
+  boss:    { tint: 0x40242a, glow: 0xff1a10, gun: "launcher" }
+};
+function makeDroid(type, g, u) {
+  const T = ETYPES[type], D = DROID[type], h = T.h, k = h / 1.8;
+  const inner = makeSoldier(D.glow, D.gun); inner.scale.setScalar(k); g.add(inner);
+  const iu = inner.userData, tint = new THREE.Color(D.tint);
+  iu.mats.forEach(mt => {
+    if (/Visor/i.test(mt.name)) { mt.color.set(D.glow); mt.emissive.set(D.glow); mt.emissiveIntensity = 2.2; }
+    else { mt.color.set(0x1c1f26).lerp(tint, 0.22); mt.metalness = 0.88; mt.roughness = 0.28; mt.emissive = new THREE.Color(0x000000); }
+  });
+  g.updateMatrixWorld(true);
+  const B = iu.bones, P = (b, x, y, z) => (b ? b.getWorldPosition(V()) : V(0, h * 0.5, 0)).add(V(x * k, y * k, z * k));
+  const glow = glowMat(D.glow, 2.2), plate = new THREE.MeshStandardMaterial({ color: new THREE.Color(0x2a2e38).lerp(tint, 0.45), roughness: 0.25, metalness: 0.85 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x14161c, roughness: 0.35, metalness: 0.8 });
+  // head: helmet shell, glowing eye slit, antenna
+  bolt(g, B.Head, new THREE.Mesh(new THREE.SphereGeometry(0.135 * k, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.62), plate), P(B.Head, 0, 0.1, 0.01));
+  bolt(g, B.Head, new THREE.Mesh(new THREE.BoxGeometry(0.2 * k, 0.035 * k, 0.04 * k), glow), P(B.Head, 0, 0.09, -0.115));
+  bolt(g, B.Head, new THREE.Mesh(new THREE.CylinderGeometry(0.006 * k, 0.01 * k, 0.22 * k, 5), dark), P(B.Head, 0.1, 0.24, 0.03), [0, 0, -0.25]);
+  bolt(g, B.Head, new THREE.Mesh(new THREE.SphereGeometry(0.018 * k, 6, 4), glow), P(B.Head, 0.128, 0.345, 0.03));
+  // chest plate with reactor core, back power pack
+  bolt(g, B.Spine2, new THREE.Mesh(new THREE.BoxGeometry(0.34 * k, 0.24 * k, 0.07 * k), plate), P(B.Spine2, 0, 0.02, -0.12), [0.12, 0, 0]);
+  bolt(g, B.Spine2, new THREE.Mesh(new THREE.SphereGeometry(0.045 * k, 12, 8), glow), P(B.Spine2, 0, 0.03, -0.16));
+  bolt(g, B.Spine2, new THREE.Mesh(new THREE.BoxGeometry(0.3 * k, 0.32 * k, 0.13 * k), dark), P(B.Spine2, 0, -0.02, 0.17));
+  for (const s of [-1, 1]) bolt(g, B.Spine2, new THREE.Mesh(new THREE.BoxGeometry(0.03 * k, 0.24 * k, 0.02 * k), glow), P(B.Spine2, s * 0.09, -0.02, 0.24));
+  // shoulder pads and shin guards
+  for (const [bn, s] of [["LeftArm", 1], ["RightArm", -1]]) bolt(g, B[bn], new THREE.Mesh(new THREE.BoxGeometry(0.17 * k, 0.06 * k, 0.2 * k), plate), P(B[bn], 0, 0.07, 0), [0, 0, s * 0.35]);
+  for (const bn of ["LeftLeg", "RightLeg"]) if (B[bn]) bolt(g, B[bn], new THREE.Mesh(new THREE.BoxGeometry(0.1 * k, 0.26 * k, 0.05 * k), plate), P(B[bn], 0, -0.16, -0.08));
+  if (type === "sniper") bolt(g, B.Head, new THREE.Mesh(new THREE.CylinderGeometry(0.03 * k, 0.03 * k, 0.06 * k, 8).rotateX(Math.PI / 2), glow), P(B.Head, -0.08, 0.1, -0.13));
+  Object.assign(u, { droid: true, inner, lastPos: null });
+  if (type === "bulwark") {
+    // shield covers legs and chest only: the head pokes out above it and can be shot
+    const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.62 * h, 0.62 * h, 0.5 * h, 20, 1, true, -0.75, 1.5), shieldMat); sh.rotation.y = Math.PI; sh.position.set(0, 0.31 * h, 0.12 * h); g.add(sh); u.parts.shield = sh;
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.62 * h, 0.012 * h, 4, 20, 1.5), glowMat(0x4aa8ff, 3)); rim.rotation.set(Math.PI / 2, 0, Math.PI / 2 - 0.75 + Math.PI); rim.position.set(0, 0.56 * h, 0.12 * h); g.add(rim);
+  }
+  if (type === "boss") {
+    // Titan: horns, spiked pauldrons, forearm blades, a big reactor core and back exhausts on the same rig
+    const L = (b, x, y, z) => P(B[b], x, y, z);
+    for (const s of [-1, 1]) {
+      bolt(g, B.Head, spike(0.028 * k, 0.24 * k), L("Head", s * 0.11, 0.2, 0.02), [-0.35, 0, -s * 0.85]);
+      bolt(g, B.Head, spike(0.012 * k, 0.1 * k, bossRed), L("Head", s * 0.2, 0.3, 0.03), [-0.35, 0, -s * 0.85]);
+      const arm = s < 0 ? "LeftArm" : "RightArm", fore = s < 0 ? "LeftForeArm" : "RightForeArm", leg = s < 0 ? "LeftLeg" : "RightLeg";
+      bolt(g, B[arm], new THREE.Mesh(new THREE.BoxGeometry(0.22 * k, 0.08 * k, 0.26 * k), bossMetal), L(arm, 0, 0.1, 0), [0, 0, -s * 0.35]);
+      bolt(g, B[arm], new THREE.Mesh(new THREE.BoxGeometry(0.23 * k, 0.015 * k, 0.27 * k), bossRed), L(arm, 0, 0.055, 0), [0, 0, -s * 0.35]);
+      for (let i = 0; i < 3; i++) bolt(g, B[arm], spike(0.022 * k, 0.14 * k), L(arm, -s * 0.02, 0.19, -0.08 + i * 0.08), [0, 0, -s * 0.4]);
+      if (B[fore]) { bolt(g, B[fore], new THREE.Mesh(new THREE.BoxGeometry(0.08 * k, 0.16 * k, 0.09 * k), bossMetal), L(fore, 0, -0.1, 0)); bolt(g, B[fore], spike(0.02 * k, 0.26 * k, bossRed), L(fore, -s * 0.06, -0.12, 0), [0, 0, s * 1.4]); }
+      if (B[leg]) bolt(g, B[leg], spike(0.03 * k, 0.16 * k), L(leg, 0, 0.0, -0.12), [-Math.PI / 2, 0, 0]);
+      const ex = bolt(g, B.Spine2, new THREE.Mesh(new THREE.CylinderGeometry(0.035 * k, 0.045 * k, 0.3 * k, 10), bossMetal), L("Spine2", s * 0.09, 0.2, 0.22), [0.25, 0, 0]);
+      const fl = bolt(g, B.Spine2, new THREE.Mesh(new THREE.ConeGeometry(0.03 * k, 0.16 * k, 8), bossFlame), L("Spine2", s * 0.09, 0.4, 0.27), [0.25, 0, 0]);
+      (u.parts.flames = u.parts.flames || []).push(fl);
+    }
+    for (let i = 0; i < 3; i++) bolt(g, B.Head, spike(0.02 * k, 0.12 * k + i * 0.02 * k), L("Head", 0, 0.24 - i * 0.03, 0.06 + i * 0.05), [-0.9, 0, 0]);
+    bolt(g, B.Spine2, new THREE.Mesh(new THREE.BoxGeometry(0.4 * k, 0.3 * k, 0.08 * k), bossMetal), L("Spine2", 0, 0.03, -0.14), [0.12, 0, 0]);
+    u.parts.core = bolt(g, B.Spine2, new THREE.Mesh(new THREE.SphereGeometry(0.06 * k, 16, 12), bossRed), L("Spine2", 0, 0.04, -0.19));
+    u.parts.ring2 = bolt(g, B.Spine2, new THREE.Mesh(new THREE.TorusGeometry(0.08 * k, 0.012 * k, 6, 24), bossTrim), L("Spine2", 0, 0.04, -0.185));
+  }
+}
 function makeGltfRobot(type, g, u) {
   const T = ETYPES[type], src = ASSETS.robot;
   const inner = SkeletonUtils.clone(src.scene); inner.rotation.y = Math.PI; inner.scale.setScalar(T.h / 4.77); g.add(inner);
@@ -963,7 +1025,14 @@ const bossMetal = new THREE.MeshStandardMaterial({ color: 0x2a2d36, roughness: 0
 const bossTrim = new THREE.MeshStandardMaterial({ color: 0x55596a, roughness: 0.25, metalness: 0.9 });
 const bossRed = new THREE.MeshStandardMaterial({ color: 0x400000, emissive: 0xff0800, emissiveIntensity: 1.7, roughness: 0.4 }); for (const m of [bossMetal, bossTrim, bossRed]) m.userData.shared = true;
 const bossFlame = new THREE.MeshBasicMaterial({ color: 0xff4008, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
-function findBone(root, n) { let b = null; root.traverse(o => { if (o.isBone && o.name.replace(/[.\s_]/g, "") === n) b = b || o; }); return b; }
+// armour-plate texture on every procedural robot and the Siege Walker, so they match the droids' metal look
+{ const mt = texLoader.load("assets/robot_metal.jpg"); mt.colorSpace = THREE.SRGBColorSpace; mt.wrapS = mt.wrapT = THREE.RepeatWrapping; mt.anisotropy = 4;
+  robotBody.map = mt; robotBody.color.set(0xb0b6c4); robotBody.metalness = 0.8; robotBody.roughness = 0.32;
+  robotDark.map = mt; robotDark.color.set(0x80869a);
+  bossMetal.map = mt; bossMetal.color.set(0x9098a8); bossTrim.map = mt; bossTrim.color.set(0xc0c6d4);
+  [robotBody, robotDark, bossMetal, bossTrim].forEach(m => m.needsUpdate = true); }
+const RIG_MAP = { Torso: "Spine2", ShoulderL: "LeftShoulder", ShoulderR: "RightShoulder", UpperArmL: "LeftArm", UpperArmR: "RightArm", LowerArmL: "LeftForeArm", LowerArmR: "RightForeArm", Palm2L: "LeftHand", Palm2R: "RightHand", LowerLegL: "LeftLeg", LowerLegR: "RightLeg", UpperLegL: "LeftUpLeg", UpperLegR: "RightUpLeg" };
+function findBone(root, n) { let b = null; const norm = o => o.name.replace(/[.\s_:]/g, "").replace(/^mixamorig/, ""); root.traverse(o => { if (o.isBone && norm(o) === n) b = b || o; }); if (!b && RIG_MAP[n]) return findBone(root, RIG_MAP[n]); return b; }
 function bolt(parent, bone, mesh, pos, rot) { mesh.position.copy(pos); if (rot) mesh.rotation.set(rot[0], rot[1], rot[2]); parent.add(mesh); mesh.updateMatrixWorld(true); (bone || parent).attach(mesh); mesh.castShadow = true; return mesh; }
 function spike(r, l, mat = bossTrim) { return new THREE.Mesh(new THREE.ConeGeometry(r, l, 6), mat); }
 function titanArmor(g, inner, u, h) {
@@ -1046,7 +1115,8 @@ function poseWalker(u, phase, mv) {
 }
 function makeRobot(type) {
   const g = new THREE.Group(), u = { parts: {}, isBoss: !!ETYPES[type].boss };
-  if (ETYPES[type].gltf) makeGltfRobot(type, g, u);
+  if (DROID[type] && ASSETS.soldier) makeDroid(type, g, u);
+  else if (ETYPES[type].gltf) makeGltfRobot(type, g, u);
   else if (type === "walker") makeWalker(g, u);
   else if (type === "drone") {
     const b = new THREE.Mesh(new THREE.SphereGeometry(0.45, 16, 12), robotBody); g.add(b);
@@ -1098,7 +1168,7 @@ function setFlash(u, on) {
   for (const m of u.mats) { if (!m.emissive || m.userData.shared) continue; if (!m.userData.e) m.userData.e = [m.emissive.getHex(), m.emissiveIntensity]; if (on) { m.emissive.set(bf ? 0xff3a1a : 0xffffff); m.emissiveIntensity = bf ? 0.3 : 0.8; } else { m.emissive.setHex(m.userData.e[0]); m.emissiveIntensity = m.userData.e[1]; } }
 }
 function robotBase(u, n) { if (!u.acts || u.base === n || !u.acts[n]) return; u.acts[n].reset().setEffectiveWeight(1).fadeIn(0.25).play(); u.acts[u.base].fadeOut(0.25); u.base = n; }
-function robotAttack(e) { const u = e.model.userData; if (!u.acts) { if (u.parts.hull) u.recoil = 1; return; } const a = u.acts.Punch; a.reset(); a.setEffectiveTimeScale(isBoss(e) ? 1.2 : 1.6); a.setEffectiveWeight(1); a.fadeIn(0.08).play(); }
+function robotAttack(e) { const u = e.model.userData; if (u.droid) { u.inner.userData.flashT = 0.08; u.inner.userData.recoil = 1; return; } if (!u.acts) { if (u.parts.hull) u.recoil = 1; return; } const a = u.acts.Punch; a.reset(); a.setEffectiveTimeScale(isBoss(e) ? 1.2 : 1.6); a.setEffectiveWeight(1); a.fadeIn(0.08).play(); }
 function labelSprite(text, color = "#fff") {
   const c = document.createElement("canvas"); c.width = 256; c.height = 64; const g = c.getContext("2d");
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
@@ -1192,7 +1262,7 @@ function disposeModel(m) { scene.remove(m); scene.remove(m.userData.bar); }
 function removeEnemyVisual(e, exploded) {
   enemies.delete(e.id); stopLaser(e.id);
   const u = e.model.userData;
-  if (exploded && (u.acts && u.acts.Death || isBoss(e))) {
+  if (exploded && (u.acts && u.acts.Death || u.droid || isBoss(e))) {
     // humanoid robots play a death animation, then blow apart
     u.bar.visible = false; setFlash(u, false);
     if (u.acts) { for (const k in u.acts) if (k !== "Death") u.acts[k].fadeOut(0.1); u.acts.Death.reset().setEffectiveWeight(1).fadeIn(0.1).play(); }
@@ -1206,7 +1276,7 @@ function removeEnemyVisual(e, exploded) {
 }
 function stepCorpses(dt) {
   for (let i = corpses.length - 1; i >= 0; i--) {
-    const e = corpses[i], u = e.model.userData; e.dieT -= dt; if (u.mixer) u.mixer.update(dt);
+    const e = corpses[i], u = e.model.userData; e.dieT -= dt; if (u.mixer) u.mixer.update(dt); if (u.droid) animSoldier(u.inner, V(), 0, true, dt, 0);
     if (u.parts.hull) { u.parts.hull.rotation.x = lerp(u.parts.hull.rotation.x, 0.35, dt); u.parts.hull.position.y = Math.max(2.5, u.parts.hull.position.y - dt * 1.4); }
     if (isBoss(e) && Math.random() < dt * 7) explosion(chestOf(e).add(V(rand(-2.5, 2.5), rand(-2, 2.5), rand(-2.5, 2.5))), 2.6, Math.random() < 0.5 ? 0xff5a2a : 0xffb02e);
     if (e.dieT <= 0) { corpses.splice(i, 1); disposeModel(e.model); const c = chestOf(e); explosion(c, isBoss(e) ? 9 : e.type === "bulwark" ? 3.4 : 2.4, 0xff4a3a); if (isBoss(e)) { shockRing(e.pos, 36, 0xff6040, 1.3); shake(1.2); puff(c, 20, 4, 0.25); } }
@@ -1217,7 +1287,14 @@ function animEnemy(e, dt, now) {
   e.model.position.copy(e.pos); e.model.rotation.y = e.yaw;
   if (e.spawnT > 0) { e.spawnT -= dt; e.model.scale.setScalar(Math.max(0.05, 1 - e.spawnT / 0.6) * (e.scale || 1)); } else e.model.scale.setScalar(e.scale || 1);
   u.phase += dt * (2 + e.moving * 1.2);
-  if (u.mixer) {
+  if (u.droid) {
+    // drive the shared soldier animator with the robot's velocity in its own frame
+    const lp = u.lastPos || e.pos.clone(), vx = (e.pos.x - lp.x) / Math.max(dt, 1e-3), vz = (e.pos.z - lp.z) / Math.max(dt, 1e-3); u.lastPos = e.pos.clone();
+    const sc = 1 / ((ETYPES[e.type].h / 1.8) * (e.scale || 1)), c = Math.cos(-e.yaw), sn = Math.sin(-e.yaw);
+    u.vel = u.vel || V(); u.vel.x = lerp(u.vel.x, (vx * c + vz * sn) * sc, Math.min(1, dt * 8)); u.vel.z = lerp(u.vel.z, (-vx * sn + vz * c) * sc, Math.min(1, dt * 8));
+    if (Math.hypot(vx, vz) > 40) u.vel.set(0, 0, 0);
+    animSoldier(u.inner, u.vel, u.aimPitch || 0, false, dt, 0);
+  } else if (u.mixer) {
     robotBase(u, e.moving < 0.4 ? "Idle" : e.moving < 3.2 ? "Walking" : "Running");
     const ws = u.acts[u.base]; if (u.base !== "Idle") ws.timeScale = clamp(e.moving / (u.base === "Running" ? 5 : 2.2), 0.5, 1.6) * (ETYPES[e.type].h > 3 ? (isBoss(e) ? 0.5 : 0.6) : 1);
     u.mixer.update(dt);
@@ -2188,7 +2265,7 @@ function cleanup() {
   G.ph = "menu"; lastPh = null; MUS.level = 0; releaseWake(); exitLock();
 }
 function backToMenu(msg) { cleanup(); showScreen("sMenu"); showBest(); if (msg) toast(msg, 3000); }
-const BUILD = "3.9"; const FIXED_CODE = "UHHF"; // permanent room code for Bulmaim's games
+const BUILD = "4.0"; const FIXED_CODE = "UHHF"; // permanent room code for Bulmaim's games
 function makeCode() { if (FIXED_CODE) return FIXED_CODE; let c = ""; for (let i = 0; i < 4; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]; return c; }
 
 // ---- Fallback relay: when phones can't link directly (strict mobile/Wi-Fi networks), send game

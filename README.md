@@ -56,7 +56,7 @@ Neon Rooftop, Downtown (a rainy city block with skyscrapers, wrecked cars, a bus
 - Networking: PeerJS for the peer-to-peer link (`lib/peerjs.min.js`, MIT).
 - Characters:
   - Players: the animated soldier from the Three.js examples (`assets/Soldier.glb`), with a code-driven aiming pose (IK arms that follow your aim).
-  - Robots: RobotExpressive by Tomás Laulhé (CC0, `assets/RobotExpressive.glb`), recoloured per class.
+  - Troopers, Snipers, Bulwarks and the Titan are combat droids built on the same animated soldier rig as the players, re-skinned in black chrome with glowing visors, bolted-on armour and their own guns. Drones, Rushers, Leapers, Arc Troopers, tanks and the Siege Walker are procedural, with a generated armour-plate texture (`assets/robot_metal.jpg`). RobotExpressive by Tomás Laulhé (CC0) is kept as a fallback.
 - Arena textures, the sky panorama, the recorded sound effects and the voice lines were generated for this game. The music tracks (calm and combat, crossfaded by the action) were also generated for this game, with a live-synthesised fallback.
 - How the two phones split the work:
   - The host phone simulates robots, waves, pickups and barrels.
