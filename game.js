@@ -1811,7 +1811,7 @@ function hostTick(dt) {
     const boss = [...enemies.values()].find(isBoss); G.bossFrac = boss ? boss.hpFrac : -1; G.bossTy = boss ? boss.type : "";
     const meOut = me.downed || me.dead, mateOut = !(mode === "host" && mate.on) || mate.downed || mate.dead;
     if (meOut && mateOut) { G.ph = "over"; hostSendGm(); }
-  } else if (G.ph === "break") { if (bothReady()) { G.ph = "count"; G.tm = 3; hostSendGm(); } }
+  } else if (G.ph === "break") { if (bothReady()) { G.ph = "count"; G.tm = (G.wave + 1) % 5 === 0 ? 5.5 : 3; hostSendGm(); } }
   enemies.forEach(e => hostStepEnemy(e, dt));
   pickups.forEach(pk => { pk.life -= dt; if (pk.life <= 0) { removePickup(pk.id); netSend({ t: "pr", id: pk.id }); } });
 }
@@ -1834,12 +1834,32 @@ function localReset() {
 
 // phase changes, on both phones
 let lastPh = null;
+// ---- cinematics: boss entrance before a boss wave, boss destroyed after it, looping title screen
+const CINE = { titan: ["cin_titan", "THE TITAN", "Hit the head · jump the shockwaves"], walker: ["cin_walker", "SIEGE WALKER", "Shoot the red dome · dodge the mortars"], down: ["cin_down", "BOSS DESTROYED", "Grab the legendary cache"] };
+let cineT = 0;
+function playCine(k, ms = 5200) {
+  const c = CINE[k]; if (!c || qs.get("nocine")) return;
+  const el = $("cine"), v = $("cineVid");
+  el.querySelector("b").textContent = c[1]; el.querySelector("span").textContent = c[2];
+  // restart the text animation
+  el.querySelectorAll("#cineTxt b,#cineTxt span").forEach(n => { n.style.animation = "none"; void n.offsetWidth; n.style.animation = ""; });
+  v.poster = "assets/" + c[0] + ".jpg"; v.src = "assets/" + c[0] + ".mp4"; v.currentTime = 0;
+  el.classList.add("on"); requestAnimationFrame(() => el.classList.add("vis"));
+  v.play().catch(() => {});
+  if (k === "down") { SFX.boom(1); shake(0.4); } else { voice("vo_titan"); SFX.boom(0.7); }
+  clearTimeout(cineT); cineT = setTimeout(stopCine, ms);
+}
+function stopCine() { const el = $("cine"); if (!el.classList.contains("on")) return; el.classList.remove("vis"); clearTimeout(cineT); setTimeout(() => { el.classList.remove("on"); $("cineVid").pause(); }, 350); }
+$("cine").addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); stopCine(); });
+{ const mv = $("menuVid"); mv.src = "assets/cin_title.mp4"; const tryPlay = () => { if ($("sMenu").classList.contains("on")) mv.play().catch(() => {}); else mv.pause(); }; setInterval(tryPlay, 1000); addEventListener("pointerdown", tryPlay, { once: true }); }
 function applyGm(g) {
   const prev = lastPh; Object.assign(G, g); lastPh = G.ph;
   MUS.level = G.ph === "wave" ? (G.wave % 5 === 0 ? 3 : 2) : G.ph === "over" ? 0 : 1;
   if (prev === G.ph) return;
   if ((prev === null || prev === "connecting" || prev === "menu") && G.ph !== "over") showScreen(null);
-  if (G.ph === "count") { if ($("shop").classList.contains("on")) showScreen(null); if (G.wave > 0) bigMsg("GET READY", "Wave " + (G.wave + 1) + " incoming", 2000); }
+  if (G.ph === "count") { if ($("shop").classList.contains("on")) showScreen(null); const nw = G.wave + 1; if (nw % 5 === 0) playCine((nw / 5) % 2 === 1 ? "titan" : "walker"); else if (G.wave > 0) bigMsg("GET READY", "Wave " + (G.wave + 1) + " incoming", 2000); }
+  if (G.ph === "wave") stopCine();
+  if (G.ph === "break" && G.wave % 5 === 0 && G.wave > 0) playCine("down", 4800);
   if (G.ph === "wave") {
     me.ready = false; me.phoenixUsed = 0; me.offers = null; me.bought = false;
     SFX.wave(); if (G.wave % 5 !== 0) setTimeout(() => voice("vo_wave"), 300);
@@ -2265,7 +2285,7 @@ function cleanup() {
   G.ph = "menu"; lastPh = null; MUS.level = 0; releaseWake(); exitLock();
 }
 function backToMenu(msg) { cleanup(); showScreen("sMenu"); showBest(); if (msg) toast(msg, 3000); }
-const BUILD = "4.0"; const FIXED_CODE = "UHHF"; // permanent room code for Bulmaim's games
+const BUILD = "4.1"; const FIXED_CODE = "UHHF"; // permanent room code for Bulmaim's games
 function makeCode() { if (FIXED_CODE) return FIXED_CODE; let c = ""; for (let i = 0; i < 4; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]; return c; }
 
 // ---- Fallback relay: when phones can't link directly (strict mobile/Wi-Fi networks), send game
@@ -2813,5 +2833,5 @@ buildArena(arenaCfg);
 
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
 // test hooks
-window.__it = { G, me, mate, input, camera, chestOf, enemies, H, pickups, chests, hostSpawnEnemy, hostDamageEnemy, get barrels() { return barrels; }, hazards, lasers, corpses, ASSETS, MUS, TRACKS, scene, startHazard, hitBarrel, giveItem, buildArena, get arenaCfg() { return arenaCfg; }, get curA() { return world.userData.a || null; }, ST, recalc, hostChest, rockets, boxes, get mode() { return mode; }, get quality() { return quality; }, set surv(v) { mySurv = v; } };
+window.__it = { playCine, G, me, mate, input, camera, chestOf, enemies, H, pickups, chests, hostSpawnEnemy, hostDamageEnemy, get barrels() { return barrels; }, hazards, lasers, corpses, ASSETS, MUS, TRACKS, scene, startHazard, hitBarrel, giveItem, buildArena, get arenaCfg() { return arenaCfg; }, get curA() { return world.userData.a || null; }, ST, recalc, hostChest, rockets, boxes, get mode() { return mode; }, get quality() { return quality; }, set surv(v) { mySurv = v; } };
 $("verTag") && ($("verTag").textContent = "VERSION " + BUILD + (FIXED_CODE ? " · CODE " + FIXED_CODE : ""));
