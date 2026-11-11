@@ -35,12 +35,14 @@ Neon Rooftop, Downtown (a rainy city block with skyscrapers, wrecked cars, a bus
 
 ## Controls
 - **Left side of the screen:** drag to move.
-- **Right side:** drag to aim. Light aim assist is on for touch.
+- **Right side:** drag to aim. Aim assist is on for touch: while you hold FIRE, the camera pulls onto the robot nearest the crosshair.
 - **FIRE / JUMP** plus the three ability buttons, **USE** for crates and **READY** between waves.
 - Green rings are jump pads to the high ground. Red barrels explode.
 - Keyboard and mouse: WASD, mouse (click to lock), Space jump, G/right-click secondary, Shift utility, F special, E use, R ready, B armory.
 
 ## Robots and bosses
+- Robots start out slow and inaccurate and get faster, sharper and quicker to react each wave (fully by wave 15). They patrol until they spot you nearby or get shot, and they need a clear line to your chest to fire, so waist-high cover protects you.
+- **Leapers** are spider bots that pounce and bite. **Arc Troopers** fire slow plasma orbs you can sidestep.
 - **Troopers** flank in squads. **Snipers** paint you with a red laser first. **Bulwarks** carry a front shield, but their head sticks out above it. **Rushers** blow up. **Mortar tanks** mark where shells land. **Drones** strafe from the air. From wave 6, **gold elites** pay double.
 - **Every 5th wave is a boss**, alternating between:
   - **The Titan:** a horned, armored giant. Its head is the weak point. It sweeps a laser and slams shockwaves (jump them).

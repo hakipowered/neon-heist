@@ -28,7 +28,7 @@ const ID_PREFIX = "irontide-v3-";
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ";
 
 // ===================================================================== tuning
-const HALF = 46, GRAV = 26, JUMPV = 9.2, STEP = 0.5;
+const HALF = 56, GRAV = 26, JUMPV = 9.2, STEP = 0.5;
 const P_R = 0.42, P_H = 1.8, P_SPEED = 7.2;
 const BLEED_TIME = 25, REVIVE_TIME = 3, REVIVE_DIST = 2.6;
 
@@ -100,20 +100,24 @@ const WEATHERS = { clear: "Clear", rain: "Rain", snow: "Snow", storm: "Thunderst
 const TODS = { day: "Day", dusk: "Dusk", night: "Night" };
 
 const ETYPES = {
-  drone:   { hp: 35,  speed: 6.5, r: 0.55, h: 0.9, fly: true, reward: 15, fire: 1.7, range: 36, bolt: 7,  boltSpd: 20 },
-  grunt:   { hp: 75,  speed: 4.2, r: 0.5,  h: 1.95, reward: 20, fire: 2.2, burst: 3, range: 32, bolt: 7, boltSpd: 24, keep: 12, gltf: 0xd0602a, head: true },
-  sniper:  { hp: 60,  speed: 3.8, r: 0.5,  h: 2.05, reward: 35, fire: 5.0, charge: 1.6, range: 70, bolt: 32, boltSpd: 75, keep: 27, gltf: 0x8a5cff, head: true },
-  bulwark: { hp: 280, speed: 2.7, r: 0.8,  h: 2.7, reward: 50, fire: 2.6, range: 22, bolt: 8, boltSpd: 19, spreadN: 5, keep: 6, shield: true, gltf: 0x3c78c8, head: true },
-  rusher:  { hp: 45,  speed: 8.4, r: 0.5,  h: 1.2, reward: 15, boom: 36, fuse: 0.65 },
-  tank:    { hp: 420, speed: 2.3, r: 1.15, h: 2.6, reward: 60, fire: 3.0, range: 45, mortar: 26, keep: 16 },
+  drone:   { hp: 35,  speed: 5.4, r: 0.55, h: 0.9, fly: true, reward: 15, fire: 2.1, range: 26, bolt: 7,  boltSpd: 20 },
+  grunt:   { hp: 75,  speed: 3.6, r: 0.5,  h: 1.95, reward: 20, fire: 2.6, burst: 3, range: 25, bolt: 7, boltSpd: 24, keep: 12, gltf: 0xd0602a, head: true },
+  sniper:  { hp: 60,  speed: 3.2, r: 0.5,  h: 2.05, reward: 35, fire: 5.5, charge: 1.9, range: 55, bolt: 32, boltSpd: 75, keep: 27, gltf: 0x8a5cff, head: true },
+  bulwark: { hp: 280, speed: 2.4, r: 0.8,  h: 2.7, reward: 50, fire: 2.6, range: 22, bolt: 8, boltSpd: 19, spreadN: 5, keep: 6, shield: true, gltf: 0x3c78c8, head: true },
+  rusher:  { hp: 45,  speed: 7.0, r: 0.5,  h: 1.2, reward: 15, boom: 36, fuse: 0.65 },
+  tank:    { hp: 420, speed: 2.0, r: 1.15, h: 2.6, reward: 60, fire: 3.4, range: 38, mortar: 26, keep: 16 },
+  leaper:  { hp: 55,  speed: 5.6, r: 0.55, h: 0.9, reward: 18, melee: 14, leap: true },
+  zapper:  { hp: 120, speed: 2.8, r: 0.6,  h: 1.7, reward: 30, fire: 3.4, range: 30, bolt: 16, boltSpd: 10, keep: 14, orb: true },
   boss:    { hp: 2900, speed: 2.4, r: 2.1, h: 7.2, reward: 400, fire: 2.2, range: 70, bolt: 12, boltSpd: 18, mortar: 30, keep: 15, gltf: 0x30333d, head: true, boss: true },
   walker:  { hp: 3300, speed: 2.1, r: 2.8, h: 7.4, reward: 450, fire: 1.5, range: 75, bolt: 10, boltSpd: 24, mortar: 26, keep: 19, head: true, boss: true }
 };
-const ENAMES = { drone: "Drone", grunt: "Trooper", sniper: "Sniper", bulwark: "Bulwark", rusher: "Rusher", tank: "Mortar tank", boss: "Titan", walker: "Siege Walker" };
+const ENAMES = { leaper: "Leaper", zapper: "Arc Trooper", drone: "Drone", grunt: "Trooper", sniper: "Sniper", bulwark: "Bulwark", rusher: "Rusher", tank: "Mortar tank", boss: "Titan", walker: "Siege Walker" };
 const isBoss = e => !!ETYPES[e.type].boss;
+// 0 on wave 1, 1 by wave 15: robots get faster, more accurate and quicker to react as waves go on
+const diffK = () => clamp(((G && G.wave) || 1) - 1, 0, 14) / 14;
 // hit spheres: [yOffset, radius] measured from the feet (drones from their center). Last sphere of a "head" type is a weak point (crit).
 const HITS = {
-  drone: [[0, 0.62]], rusher: [[0.6, 0.62]],
+  drone: [[0, 0.62]], rusher: [[0.6, 0.62]], leaper: [[0.5, 0.62]], zapper: [[0.6, 0.55], [1.35, 0.5]],
   tank: [[0.7, 1.15], [1.7, 0.95]],
   walker: [[2.6, 1.6], [5.0, 2.7], [6.9, 1.0]],
   player: [[0.5, 0.42], [1.05, 0.42], [1.6, 0.3]]
@@ -349,6 +353,27 @@ function perimeter(h = 7) {
   block(0, -HALF - 0.5, HALF * 2 + 2, 1, h, 0, 0, true); block(0, HALF + 0.5, HALF * 2 + 2, 1, h, 0, 0, true);
   block(-HALF - 0.5, 0, 1, HALF * 2, h, 0, 0, true); block(HALF + 0.5, 0, 1, HALF * 2, h, 0, 0, true);
 }
+function scatterCover(n, rMin, rMax) {
+  const PK = (HALF - 3) / 43, avoid = [[0, -43], [0, 43], [-43, 0], [43, 0], [-42, -21], [42, 21], [-21, 42], [21, -42]].map(([x, z]) => [x * PK, z * PK]);
+  const free = (x, z, w, d) => {
+    if (Math.abs(x) + w / 2 > HALF - 1.5 || Math.abs(z) + d / 2 > HALF - 1.5) return false;
+    if (Math.hypot(x - spawnPt.x, z - spawnPt.z) < 7) return false;
+    for (const [px, pz] of avoid) if (Math.hypot(x - px, z - pz) < 7) return false;
+    for (const p of pads) if (Math.hypot(x - p.x, z - p.z) < 3.5 || Math.hypot(x - p.tx, z - p.tz) < 3.5) return false;
+    for (const b of barrels) if (Math.hypot(x - b.x, z - b.z) < 2.5) return false;
+    const m = 2.6; for (const b of boxes) if (x + w / 2 + m > b.x0 && x - w / 2 - m < b.x1 && z + d / 2 + m > b.z0 && z - d / 2 - m < b.z1) return false;
+    return true;
+  };
+  let placed = 0;
+  for (let tries = 0; tries < n * 12 && placed < n; tries++) {
+    const a = srand() * Math.PI * 2, r = rMin + srand() * (rMax - rMin), x = Math.round(Math.cos(a) * r * 2) / 2, z = Math.round(Math.sin(a) * r * 2) / 2, kind = Math.floor(srand() * 4), along = srand() < 0.5;
+    if (kind === 0) { const w = along ? 4.6 : 0.9, d = along ? 0.9 : 4.6; if (!free(x, z, w, d)) continue; block(x, z, w, d, 2.0, 0, 1); }
+    else if (kind === 1) { if (!free(x, z, 4.6, 4.6)) continue; block(x, z - 1.85, 4.6, 0.9, 2.0, 0, 1); block(x + (along ? 1.85 : -1.85), z + 0.45, 0.9, 2.8, 2.0, 0, 1); }
+    else if (kind === 2) { if (!free(x, z, 1.8, 1.8)) continue; block(x, z, 1.8, 1.8, 3.4, 0, 2); }
+    else { if (!free(x, z, 2.6, 2.6)) continue; block(x, z, 2.6, 2.6, 1.7, 0, 0); block(x + 0.3, z - 0.3, 1.6, 1.6, 1.3, 1.7, 2); }
+    placed++;
+  }
+}
 const LAYOUTS = {
   rooftop() {
     perimeter(7);
@@ -445,7 +470,7 @@ const LAYOUTS = {
     // skyline outside the walls (scenery only)
     const skyM = new THREE.MeshStandardMaterial({ map: matSide.map, color: 0x8890a8, roughness: 0.6, metalness: 0.3, emissive: 0xffffff, emissiveMap: matSide.map, emissiveIntensity: 0.35 });
     for (let i = 0; i < 44; i++) {
-      const a = i / 44 * Math.PI * 2 + srand() * 0.06, r = 58 + srand() * 26, w = 8 + srand() * 10, h = 22 + srand() * 60;
+      const a = i / 44 * Math.PI * 2 + srand() * 0.06, r = HALF + 13 + srand() * 26, w = 8 + srand() * 10, h = 22 + srand() * 60;
       const g = boxGeo(w, h, w, 8), m = new THREE.Mesh(g, skyM); m.position.set(Math.cos(a) * r, h / 2, Math.sin(a) * r); m.rotation.y = -a; world.add(m);
       if (srand() < 0.35) { const tip = new THREE.Mesh(new THREE.SphereGeometry(0.5, 6, 4), new THREE.MeshBasicMaterial({ color: 0xff2020 })); tip.position.set(m.position.x, h + 0.6, m.position.z); world.add(tip); }
     }
@@ -482,6 +507,8 @@ function buildArena(cfg) {
   const st = texLoader.load("assets/" + A.sky); st.colorSpace = THREE.SRGBColorSpace; st.wrapS = THREE.MirroredRepeatWrapping; st.repeat.set(3, 1);
   if (skyMat.map) skyMat.map.dispose(); skyMat.map = st; skyMat.needsUpdate = true;
   LAYOUTS[cfg.a]();
+  // extra cover: the outer ring of the (bigger) map plus some in the middle, placed the same way on both phones
+  scatterCover(10, 12, 40); scatterCover(24, 44, HALF - 3);
   // jump pads
   pads.forEach(p => {
     const y = groundAt(p.x, p.z); p.y = y;
@@ -492,7 +519,7 @@ function buildArena(cfg) {
     padMeshes.push(ring);
   });
   // robot spawn portals around the edge
-  portals = [[0, -43], [0, 43], [-43, 0], [43, 0], [-42, -21], [42, 21], [-21, 42], [21, -42]];
+  const PK = (HALF - 3) / 43; portals = [[0, -43], [0, 43], [-43, 0], [43, 0], [-42, -21], [42, 21], [-21, 42], [21, -42]].map(([x, z]) => [x * PK, z * PK]);
   portalMeshes = portals.map(([x, z]) => {
     const g = new THREE.Group(); g.position.set(x, 0, z);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.12, 8, 40), new THREE.MeshBasicMaterial({ color: 0xff2e2e }));
@@ -1030,6 +1057,21 @@ function makeRobot(type) {
     const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 0), robotBody); b.position.y = 0.6; g.add(b); u.parts.body = b;
     const glow = new THREE.Mesh(new THREE.IcosahedronGeometry(0.36, 1), robotOrange); glow.position.y = 0.6; g.add(glow); u.parts.glow = glow;
     for (let i = 0; i < 8; i++) { const c = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.4, 6), robotDark); const a = i / 8 * Math.PI * 2; c.position.set(Math.cos(a) * 0.55, 0.6, Math.sin(a) * 0.55); c.lookAt(Math.cos(a) * 2, 0.6, Math.sin(a) * 2); c.rotateX(Math.PI / 2); g.add(c); }
+  } else if (type === "leaper") {
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 8), robotDark); b.scale.set(1, 0.6, 1.25); b.position.y = 0.55; g.add(b); u.parts.body = b;
+    for (const s of [-1, 1]) { const ey = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 4), robotRed); ey.position.set(s * 0.13, 0.66, -0.45); g.add(ey); }
+    u.parts.legs2 = [];
+    for (let i = 0; i < 6; i++) { const s = i < 3 ? -1 : 1, k = i % 3; const leg = new THREE.Group(); leg.position.set(s * 0.3, 0.55, -0.25 + k * 0.25); g.add(leg);
+      const up = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.55, 5), robotBody); up.position.set(s * 0.22, 0.12, 0); up.rotation.z = s * -1.1; leg.add(up);
+      const lo = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.6, 5), robotDark); lo.position.set(s * 0.46, -0.22, 0); lo.rotation.z = Math.PI + s * 0.35; leg.add(lo); u.parts.legs2.push(leg); }
+    const sp = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.35, 5), robotOrange); sp.position.set(0, 0.75, 0.25); sp.rotation.x = 0.6; g.add(sp);
+  } else if (type === "zapper") {
+    const wheel = new THREE.Mesh(new THREE.SphereGeometry(0.38, 12, 10), robotDark); wheel.position.y = 0.38; g.add(wheel); u.parts.wheel = wheel;
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 0.75, 10), robotBody); body.position.y = 1.0; g.add(body);
+    const vis = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.1), robotRed); vis.position.set(0, 1.15, -0.45); g.add(vis);
+    for (const s of [-1, 1]) { const coil = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.6, 8), robotDark); coil.position.set(s * 0.55, 1.05, 0); g.add(coil); }
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 8), glowMat(0xb06bff, 2.2)); orb.position.y = 1.6; g.add(orb); u.parts.orb = orb;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.03, 6, 20), glowMat(0xb06bff, 1.6)); ring.position.y = 1.6; ring.rotation.x = Math.PI / 2; g.add(ring); u.parts.ring = ring;
   } else if (type === "tank") {
     const hull = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.9, 2.6), robotBody); hull.position.y = 0.75; g.add(hull);
     for (const s of [-1, 1]) { const tr = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.7, 2.8), robotDark); tr.position.set(s * 1.1, 0.4, 0); g.add(tr); const st = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 2.6), robotOrange); st.position.set(s * 1.34, 0.5, 0); g.add(st); }
@@ -1121,6 +1163,7 @@ const H = { queue: [], spawnT: 0, nextId: 1, maxAlive: 10 };
 const enemies = new Map();   // id -> enemy
 const corpses = [];          // dying robots playing their death animation
 const eproj = new Map();     // enemy projectiles
+const orbMat = new THREE.MeshBasicMaterial({ color: 0xc890ff });
 const rockets = [];          // player projectiles (local and remote visuals)
 const pickups = new Map();
 const chests = new Map();
@@ -1187,6 +1230,9 @@ function animEnemy(e, dt, now) {
   }
   if (u.parts.flames) u.parts.flames.forEach((f, i) => f.scale.set(1, 0.7 + Math.random() * 0.7, 1));
   if (u.parts.ring2) u.parts.ring2.rotation.z += dt * 2;
+  if (u.parts.legs2) u.parts.legs2.forEach((L, i) => { L.rotation.x = Math.sin(now / 70 + i * 2.1) * 0.5 * Math.min(1, (e.moving || 0) / 2); });
+  if (u.parts.wheel) u.parts.wheel.rotation.x -= dt * (e.moving || 0) * 2.5;
+  if (u.parts.orb) u.parts.orb.scale.setScalar(1 + Math.sin(now / 90) * 0.15);
   if (u.parts.ring) u.parts.ring.rotation.z += dt * 8;
   if (u.parts.glow) { const fuse = e.fl & 2; const k = 1 + Math.sin(now / (fuse ? 25 : e.near ? 50 : 120)) * (fuse ? 0.35 : 0.15); u.parts.glow.scale.setScalar(k); u.parts.body.rotation.y += dt * (fuse ? 20 : 6); if (fuse && (u.beepT = (u.beepT || 0) - dt) <= 0) { u.beepT = 0.12; SFX.fuse(distVol(e.pos)); } }
   if (u.parts.core) u.parts.core.scale.setScalar(1 + Math.sin(now / 150) * 0.15);
@@ -1231,7 +1277,7 @@ function hostSpawnEnemy(type, elite) {
   e.body = { p: e.pos, v: V(), r: T.r * e.scale, h: T.h * e.scale, grounded: false, noStep: false };
   Object.assign(e, { cd: rand(1, 2.5), cd2: 5, side: Math.random() < 0.5 ? 1 : -1, sideT: 0, stuckT: 0, summoned: false, tgt: null, tgtT: 0,
     slot: rand(-1.3, 1.3), burst: 0, burstT: 0, charge: 0, losT: 0, fuse: 0, cover: null, coverT: 0, coverUsed: false, dodgeCd: 0, phase: 1, hazCd: 7, hazK: 0 });
-  e.dmgMul = (1 + 0.06 * (G.wave - 1)) * (elite ? 1.25 : 1);
+  e.dmgMul = (0.8 + 0.065 * (G.wave - 1)) * (elite ? 1.25 : 1);
   if (T.boss) { sendHazard({ k: "bi", id, ty: type }); }
   return e;
 }
@@ -1261,8 +1307,28 @@ function hostStepEnemy(e, dt) {
     tmpV.subVectors(tgt.p, e.pos); tmpV.y = 0; const dist = tmpV.length(); const toT = tmpV.clone().normalize();
     face = Math.atan2(-toT.x, -toT.z);
     e.sideT -= dt; if (e.sideT <= 0) { e.sideT = rand(1.5, 3.5); if (Math.random() < 0.4) e.side *= -1; }
-    const eye = T.gltf ? V(e.pos.x, e.pos.y + 0.7 * T.h * e.scale, e.pos.z) : chestOf(e); const aim = V(tgt.p.x, tgt.p.y + 1.1, tgt.p.z); const canSee = dist < (T.range || 99) && los(eye, aim);
-    if (e.type === "rusher") {
+    const eye = T.gltf ? V(e.pos.x, e.pos.y + 0.7 * T.h * e.scale, e.pos.z) : chestOf(e); const aim = V(tgt.p.x, tgt.p.y + 1.0, tgt.p.z);
+    // cover works: the robot needs a clear line to your lower chest, so anything waist-high or taller hides you
+    const canSee = dist < (T.range || 99) && los(eye, V(tgt.p.x, tgt.p.y + 0.85, tgt.p.z));
+    const dk = diffK();
+    e.seeT = canSee ? (e.seeT || 0) + dt : 0; e.age = (e.age || 0) + dt;
+    const ready = e.seeT > 0.95 - 0.55 * dk; // reaction time before it opens fire
+    if (!e.aggro && (isBoss(e) || dist < 22 + 12 * dk || e.hp < e.maxHp || e.age > 24 - 12 * dk)) e.aggro = true;
+    if (!e.aggro) {
+      // not alerted yet: patrol toward a random spot, drifting toward the players
+      if (!e.wp || Math.hypot(e.wp.x - e.pos.x, e.wp.z - e.pos.z) < 2.5) e.wp = V(clamp(tgt.p.x * 0.5 + rand(-20, 20), -HALF + 3, HALF - 3), 0, clamp(tgt.p.z * 0.5 + rand(-20, 20), -HALF + 3, HALF - 3));
+      tmpV2.subVectors(e.wp, e.pos); tmpV2.y = 0; desired.copy(tmpV2.normalize()); speedMul = 0.55; face = Math.atan2(-desired.x, -desired.z);
+    } else if (e.type === "leaper") {
+      // closes in, then pounces; bites on landing
+      e.near = dist < 6;
+      if (e.body.grounded && dist < 7.5 && e.cd <= 0 && canSee) { e.cd = 2.2 - 0.6 * dk; e.body.v.y = 7.5; e.leapT = 0.9; e.leapV = toT.clone().multiplyScalar(Math.min(13, dist * 1.6)); e.bit = false; }
+      if (e.leapT > 0) { e.leapT -= dt; desired.copy(toT); speedMul = 0; e.body.v.x = e.leapV.x; e.body.v.z = e.leapV.z; if (!e.bit && dist < 1.6 && Math.abs(tgt.p.y - e.pos.y) < 2) { e.bit = true; damagePlayer(tgt.idx, T.melee * e.dmgMul, e.pos); } }
+      else desired.copy(toT).addScaledVector(V(-toT.z, 0, toT.x), dist > 9 ? e.side * 0.7 : 0);
+    } else if (e.type === "zapper") {
+      if (dist > T.keep + 3) desired.copy(toT); else if (dist < T.keep - 4) desired.copy(toT).multiplyScalar(-0.6);
+      desired.addScaledVector(V(-toT.z, 0, toT.x), e.side * 0.6);
+      if (e.cd <= 0 && canSee && ready) { e.cd = T.fire * rand(0.85, 1.2); e.atk++; const o = V(e.pos.x, e.pos.y + 1.6, e.pos.z); hostBolt(o, aim.clone().add(V(rand(-0.6, 0.6), 0, rand(-0.6, 0.6))).sub(o).normalize(), T.boltSpd, T.bolt * e.dmgMul, "o"); }
+    } else if (e.type === "rusher") {
       e.near = dist < 7;
       if (e.fuse > 0) { e.fuse -= dt; speedMul = 0.15; desired.copy(toT); if (e.fuse <= 0) { hostEnemyBoom(e); return; } }
       else { desired.copy(toT).addScaledVector(V(-toT.z, 0, toT.x), dist > 8 ? e.side * 0.5 : 0); if (dist < 3.6 + T.r) e.fuse = T.fuse; }
@@ -1272,12 +1338,12 @@ function hostStepEnemy(e, dt) {
         if (e.losT > 0.45) { e.charge = 0; e.cd = 1.2; netSend({ t: "lz", id: e.id, d: 0 }); stopLaser(e.id); }
         else if (e.charge <= 0) {
           e.cd = T.fire * rand(0.85, 1.15); e.atk++;
-          hostBolt(eye.clone().add(V(0, 0.15 * T.h, 0)), aim.clone().sub(eye).normalize(), T.boltSpd, T.bolt * e.dmgMul, "s");
+          const sm = 0.5 * (1 - 0.6 * diffK()); hostBolt(eye.clone().add(V(0, 0.15 * T.h, 0)), aim.clone().add(V(rand(-sm, sm), rand(-sm, sm) * 0.5, rand(-sm, sm))).sub(eye).normalize(), T.boltSpd, T.bolt * e.dmgMul, "s");
         }
       } else {
         if (dist > T.keep + 4) desired.copy(toT); else if (dist < T.keep - 8) desired.copy(toT).multiplyScalar(-1);
         desired.addScaledVector(V(-toT.z, 0, toT.x), e.side * 0.6);
-        if (e.cd <= 0 && canSee) { e.charge = T.charge * (e.elite ? 0.8 : 1); e.losT = 0; startLaser(e.id, tgt.idx, e.charge); netSend({ t: "lz", id: e.id, tg: tgt.idx, d: r2(e.charge) }); }
+        if (e.cd <= 0 && canSee && ready) { e.charge = T.charge * (e.elite ? 0.8 : 1); e.losT = 0; startLaser(e.id, tgt.idx, e.charge); netSend({ t: "lz", id: e.id, tg: tgt.idx, d: r2(e.charge) }); }
       }
     } else if (e.type === "grunt") {
       // squad tactics: each trooper holds its own angle around the target (flanking); hurt ones fall back to cover
@@ -1286,18 +1352,18 @@ function hostStepEnemy(e, dt) {
       else {
         e.cover = null;
         const ang = Math.atan2(e.pos.z - tgt.p.z, e.pos.x - tgt.p.x);
-        const want = V(tgt.p.x + Math.cos(ang + e.slot * 0.4) * T.keep, 0, tgt.p.z + Math.sin(ang + e.slot * 0.4) * T.keep);
+        const want = V(tgt.p.x + Math.cos(ang + e.slot * 0.22) * T.keep, 0, tgt.p.z + Math.sin(ang + e.slot * 0.22) * T.keep);
         tmpV2.subVectors(want, e.pos); tmpV2.y = 0; if (tmpV2.length() > 1.5) desired.copy(tmpV2.normalize()); else desired.set(-toT.z * e.side, 0, toT.x * e.side).multiplyScalar(0.5);
         if (!canSee && dist < 30) desired.add(toT).normalize();
       }
       if (e.burst > 0) { e.burstT -= dt; if (e.burstT <= 0) { e.burst--; e.burstT = 0.13; fireAimedBolt(e, tgt, eye, aim, dist, T); } }
-      else if (e.cd <= 0 && canSee) { e.cd = T.fire * rand(0.8, 1.25); e.burst = T.burst + (e.elite ? 2 : 0); e.burstT = 0; e.atk++; }
+      else if (e.cd <= 0 && canSee && ready) { e.cd = T.fire * rand(0.8, 1.25); e.burst = T.burst + (e.elite ? 2 : 0); e.burstT = 0; e.atk++; }
     } else if (T.keep) { // tank, bulwark, boss
       if (dist > T.keep + 3) desired.copy(toT);
       else if (dist < T.keep - 4) desired.copy(toT).multiplyScalar(-0.7);
       desired.addScaledVector(V(-toT.z, 0, toT.x), e.side * (e.type === "bulwark" ? 0.3 : 0.8));
       if (isBoss(e)) hostBossBrain(e, tgt, eye, aim, dist, canSee, dt);
-      else if (e.cd <= 0 && canSee) {
+      else if (e.cd <= 0 && canSee && ready) {
         if (T.mortar) { e.cd = T.fire * rand(0.8, 1.2); hostMortar(e, tgt.p.clone().addScaledVector(tgt.v || V(), 0.6), T.mortar * e.dmgMul); }
         else if (T.spreadN) { // bulwark: shotgun spread, or a punch up close
           e.cd = T.fire * rand(0.8, 1.2); e.atk++;
@@ -1307,7 +1373,7 @@ function hostStepEnemy(e, dt) {
       }
     } else if (T.fly) {
       desired.copy(toT).multiplyScalar(dist > 9 ? 1 : -0.3).addScaledVector(V(-toT.z, 0, toT.x), e.side);
-      if (e.cd <= 0 && canSee) { e.cd = T.fire * rand(0.75, 1.25); fireAimedBolt(e, tgt, eye, aim, dist, T); }
+      if (e.cd <= 0 && canSee && ready) { e.cd = T.fire * rand(0.75, 1.25); fireAimedBolt(e, tgt, eye, aim, dist, T); }
     }
   } else { desired.set(Math.sin(e.id + performance.now() / 4000), 0, Math.cos(e.id * 1.3 + performance.now() / 5000)); }
   if (desired.lengthSq() > 1e-4 && desired.lengthSq() > 1) desired.normalize();
@@ -1320,17 +1386,17 @@ function hostStepEnemy(e, dt) {
   }
   // separation
   enemies.forEach(o => { if (o === e) return; const dx = e.pos.x - o.pos.x, dz = e.pos.z - o.pos.z, d = Math.hypot(dx, dz), m = (T.r + ETYPES[o.type].r) * 1.1; if (d < m && d > 0.01 && Math.abs(e.pos.y - o.pos.y) < 2) { desired.x += dx / d * 0.8; desired.z += dz / d * 0.8; } });
-  const spd = T.speed * speedMul * (isBoss(e) && e.phase === 3 ? 1.35 : 1) * (e.elite ? 1.12 : 1) * (e.stunT > 0 ? 0 : 1);
+  const spd = T.speed * (0.85 + 0.25 * diffK()) * speedMul * (isBoss(e) && e.phase === 3 ? 1.35 : 1) * (e.elite ? 1.12 : 1) * (e.stunT > 0 ? 0 : 1);
   if (e.stunT > 0) e.stunT -= dt;
   if (T.fly) {
     e.body.v.x = lerp(e.body.v.x, desired.x * spd, Math.min(1, dt * 2)); e.body.v.z = lerp(e.body.v.z, desired.z * spd, Math.min(1, dt * 2));
-    const alt = 5.8 + Math.sin(performance.now() / 700 + e.id) * 0.6;
+    const alt = 4.0 + Math.sin(performance.now() / 700 + e.id) * 0.5;
     e.pos.x += e.body.v.x * dt; e.pos.z += e.body.v.z * dt; e.pos.y = lerp(e.pos.y, alt, Math.min(1, dt * 2));
     e.pos.x = clamp(e.pos.x, -HALF + 1, HALF - 1); e.pos.z = clamp(e.pos.z, -HALF + 1, HALF - 1);
     e.moving = Math.hypot(e.body.v.x, e.body.v.z);
   } else {
     const k = Math.min(1, dt * 6);
-    e.body.v.x = lerp(e.body.v.x, desired.x * spd, k); e.body.v.z = lerp(e.body.v.z, desired.z * spd, k);
+    if (!(e.leapT > 0)) { e.body.v.x = lerp(e.body.v.x, desired.x * spd, k); e.body.v.z = lerp(e.body.v.z, desired.z * spd, k); }
     const before = e.pos.clone(); moveBody(e.body, dt);
     const moved = Math.hypot(e.pos.x - before.x, e.pos.z - before.z) / dt;
     if (moved < spd * 0.2 && desired.lengthSq() > 0.1) { e.stuckT += dt; if (e.stuckT > 0.6) { e.stuckT = 0; e.side *= -1; e.slot = -e.slot; if (e.body.grounded && e.type !== "tank" && !isBoss(e) && e.type !== "bulwark") e.body.v.y = 8; } } else e.stuckT = 0;
@@ -1339,8 +1405,9 @@ function hostStepEnemy(e, dt) {
   if (face !== null) e.yaw = angLerp(e.yaw, face, Math.min(1, dt * (e.type === "bulwark" ? 2.2 : isBoss(e) ? 2 : 5)));
 }
 function fireAimedBolt(e, tgt, eye, aim, dist, T) {
-  const lead = (e.elite ? 0.7 : 0.4) * dist / T.boltSpd;
-  const aimP = aim.clone().addScaledVector(tgt.v || V(), lead).add(V(rand(-0.5, 0.5), rand(-0.3, 0.3), rand(-0.5, 0.5)));
+  const dk = diffK(), lead = ((e.elite ? 0.25 : 0) + 0.45 * dk) * dist / T.boltSpd;
+  const miss = (1.5 - 0.8 * dk) * (0.45 + dist / 22) * (e.elite ? 0.75 : 1);
+  const aimP = aim.clone().addScaledVector(tgt.v || V(), lead).add(V(rand(-miss, miss), rand(-miss * 0.5, miss * 0.6), rand(-miss, miss)));
   hostBolt(eye, aimP.sub(eye).normalize(), T.boltSpd, T.bolt * e.dmgMul);
 }
 // boss: three phases. Phase 2 adds a sweeping laser (jump it or hide), phase 3 adds shockwave stomps.
@@ -1378,7 +1445,8 @@ function hostMortar(e, target, dmg) {
   const id = H.nextId++; addProj(id, "m", p, v, dmg, 3.6, target); netSend({ t: "pj", id, k: "m", p: vArr(p), v: vArr(v), tg: vArr(target) });
 }
 function addProj(id, k, p, v, dmg = 0, splash = 0, tg = null) {
-  const mesh = new THREE.Mesh(k === "m" ? mortarGeo : boltGeo, k === "m" ? mortarMat : k === "s" ? snipeMat : boltMat); mesh.position.copy(p);
+  const mesh = new THREE.Mesh(k === "m" ? mortarGeo : boltGeo, k === "m" ? mortarMat : k === "s" ? snipeMat : k === "o" ? orbMat : boltMat); mesh.position.copy(p);
+  if (k === "o") mesh.scale.setScalar(3.2);
   if (k === "b") mesh.scale.set(1, 1, 2.6); if (k === "s") mesh.scale.set(0.8, 0.8, 9);
   scene.add(mesh); const pj = { id, k, p, v, dmg, splash, mesh, life: 6 };
   if (tg) { pj.warn = new THREE.Mesh(warnGeo, new THREE.MeshBasicMaterial({ color: 0xff3020, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending })); pj.warn.position.set(tg.x, tg.y + 0.05, tg.z); pj.warn.scale.setScalar(3.6); scene.add(pj.warn); }
@@ -1387,7 +1455,7 @@ function addProj(id, k, p, v, dmg = 0, splash = 0, tg = null) {
 }
 function removeProj(pj, boom) {
   scene.remove(pj.mesh); if (pj.warn) scene.remove(pj.warn); eproj.delete(pj.id);
-  if (boom) { if (pj.k === "m") explosion(pj.p, 3.6, 0xff9a2a); else spark(pj.p, pj.k === "s" ? 0xd080ff : 0xff4040, 8, 4, 1, 0.3); }
+  if (boom) { if (pj.k === "m") explosion(pj.p, 3.6, 0xff9a2a); else spark(pj.p, pj.k === "s" || pj.k === "o" ? 0xd080ff : 0xff4040, pj.k === "o" ? 18 : 8, 4, 1, 0.3); }
 }
 function hostEnemyBoom(e) { // rusher detonation
   const c = chestOf(e), R = 4.2;
@@ -1634,15 +1702,17 @@ function resetBarrels() { barrels.forEach(b => setBarrel(b, true)); }
 // ===================================================================== waves (host)
 function waveComposition(w, coop) {
   const list = [];
-  if (w % 5 === 0) { list.push((w / 5) % 2 === 1 ? "boss" : "walker"); if (w >= 20) list.push((w / 5) % 2 === 1 ? "walker" : "boss"); for (let i = 0; i < 4 + w / 5 * 2; i++) list.push(["grunt", "drone", "grunt", "sniper"][i % 4]); return list; }
-  const n = Math.round((5 + w * 2.6) * (coop ? 1.35 : 1));
+  if (w % 5 === 0) { list.push((w / 5) % 2 === 1 ? "boss" : "walker"); if (w >= 20) list.push((w / 5) % 2 === 1 ? "walker" : "boss"); for (let i = 0; i < 4 + w / 5 * 2; i++) list.push(["grunt", "leaper", "grunt", "sniper", "zapper"][i % 5]); return list; }
+  const n = Math.round((4.5 + w * 2.35) * (coop ? 1.35 : 1));
   for (let i = 0; i < n; i++) {
     const r = Math.random();
-    if (w >= 4 && r < 0.07 + w * 0.006) list.push("tank");
-    else if (w >= 3 && r < 0.16 + w * 0.006) list.push("bulwark");
-    else if (w >= 2 && r < 0.3) list.push("sniper");
-    else if (w >= 2 && r < 0.45) list.push("rusher");
-    else if (r < 0.66) list.push("drone");
+    if (w >= 4 && r < 0.07 + w * 0.005) list.push("tank");
+    else if (w >= 3 && r < 0.15 + w * 0.005) list.push("bulwark");
+    else if (w >= 4 && r < 0.25) list.push("zapper");
+    else if (w >= 2 && r < 0.35) list.push("sniper");
+    else if (w >= 2 && r < 0.46) list.push("leaper");
+    else if (w >= 2 && r < 0.55) list.push("rusher");
+    else if (r < 0.65) list.push("drone"); // about 1 in 10: mostly ground robots
     else list.push("grunt");
   }
   return list.sort(() => Math.random() - 0.5);
@@ -1650,7 +1720,7 @@ function waveComposition(w, coop) {
 function hostStartWave() {
   G.wave++; G.ph = "wave"; G.bonus = 0;
   H.queue = waveComposition(G.wave, mode === "host" && mate.on);
-  G.left = H.queue.length; H.spawnT = 1.5; H.maxAlive = Math.min(9 + G.wave, 22);
+  G.left = H.queue.length; H.spawnT = 1.5; H.maxAlive = Math.min(7 + G.wave, 20);
   resetBarrels(); netSend({ t: "bb" });
   hostSendGm();
 }
@@ -1659,7 +1729,7 @@ function hostTick(dt) {
   if (G.ph === "count") { G.tm -= dt; if (G.tm <= 0) hostStartWave(); }
   else if (G.ph === "wave") {
     H.spawnT -= dt;
-    if (H.queue.length && H.spawnT <= 0 && enemies.size < H.maxAlive) { H.spawnT = Math.max(0.35, 1.1 - G.wave * 0.04); hostSpawnEnemy(H.queue.shift()); }
+    if (H.queue.length && H.spawnT <= 0 && enemies.size < H.maxAlive) { H.spawnT = Math.max(0.4, 1.25 - G.wave * 0.04); hostSpawnEnemy(H.queue.shift()); }
     if (!H.queue.length && enemies.size === 0) { G.ph = "break"; G.tm = 0; G.bonus = Math.round((100 + G.wave * 15) * waveScale()); hostSendGm(); hostRefillChests(); }
     const boss = [...enemies.values()].find(isBoss); G.bossFrac = boss ? boss.hpFrac : -1; G.bossTy = boss ? boss.type : "";
     const meOut = me.downed || me.dead, mateOut = !(mode === "host" && mate.on) || mate.downed || mate.dead;
@@ -1696,7 +1766,7 @@ function applyGm(g) {
   if (G.ph === "wave") {
     me.ready = false; me.phoenixUsed = 0; me.offers = null; me.bought = false;
     SFX.wave(); if (G.wave % 5 !== 0) setTimeout(() => voice("vo_wave"), 300);
-    bigMsg(G.wave % 5 === 0 ? "BOSS WAVE " + G.wave : "WAVE " + G.wave, G.wave % 5 === 0 ? "Something huge is coming" : G.wave === 2 ? "Snipers: break their red laser" : G.wave === 3 ? "Bulwarks: aim for the head or flank them" : G.wave === 6 ? "Elite robots glow gold" : "", 2400);
+    bigMsg(G.wave % 5 === 0 ? "BOSS WAVE " + G.wave : "WAVE " + G.wave, G.wave % 5 === 0 ? "Something huge is coming" : G.wave === 2 ? "Snipers: break their red laser · Leapers pounce, keep moving" : G.wave === 3 ? "Bulwarks: aim for the head or flank them" : G.wave === 4 ? "Arc Troopers fire slow plasma orbs: sidestep them" : G.wave === 6 ? "Elite robots glow gold" : "", 2400);
     if ($("shop").classList.contains("on")) showScreen(null);
   }
   if (G.ph === "break") {
@@ -1921,15 +1991,26 @@ function updateCamera(dt) {
   sun.position.copy(target).add(sunOff); sun.target.position.copy(target);
   if (nightLight.intensity > 0) nightLight.position.set(target.x, target.y + 3, target.z);
 }
+// aim assist (touch): while firing, the camera is gently pulled onto the robot nearest the crosshair
+function aimAssist(dt) {
+  if (!COARSE || !input.fire || me.downed || me.dead) return;
+  const o = camera.position, d = V(0, 0, -1).applyQuaternion(camera.quaternion);
+  let best = null, bestA = 0.22;
+  enemies.forEach(e => { if (e.spawnT > 0 || e.hp <= 0) return; const c = chestOf(e); const to = c.clone().sub(o); const dist = to.length(); if (dist > 60) return; to.normalize(); const a = Math.acos(clamp(to.dot(d), -1, 1)); if (a < bestA && los(o, c)) { best = c; bestA = a; } });
+  if (!best) return;
+  const t = best.clone().sub(camPivot).normalize(), k = Math.min(1, dt * 7);
+  me.yaw = angLerp(me.yaw, Math.atan2(-t.x, -t.z), k * 0.6);
+  me.pitch = lerp(me.pitch, clamp(Math.asin(t.y), -1.2, 1.2), k * 0.35);
+}
 function computeAim(spread = 0) {
   const o = camera.position.clone();
   const d = V(0, 0, -1).applyQuaternion(camera.quaternion);
   if (spread) { d.x += rand(-spread, spread); d.y += rand(-spread, spread); d.z += rand(-spread, spread); d.normalize(); }
   // aim assist on touch: snap toward a robot close to the crosshair
   if (COARSE && !spread) {
-    let best = null, bestA = 0.06;
+    let best = null, bestA = 0.09;
     enemies.forEach(e => { if (e.spawnT > 0) return; const c = chestOf(e); const to = c.clone().sub(o); const dist = to.length(); to.normalize(); const a = Math.acos(clamp(to.dot(d), -1, 1)); const lim = bestA * (1 + 6 / Math.max(6, dist)); if (a < lim && los(o, c)) { best = to; bestA = a; } });
-    if (best) d.lerp(best, 0.85).normalize();
+    if (best) d.copy(best);
   }
   const skip = o.distanceTo(camPivot) + 0.3; // ignore stuff between camera and the player
   const start = o.clone().addScaledVector(d, skip);
@@ -2107,7 +2188,7 @@ function cleanup() {
   G.ph = "menu"; lastPh = null; MUS.level = 0; releaseWake(); exitLock();
 }
 function backToMenu(msg) { cleanup(); showScreen("sMenu"); showBest(); if (msg) toast(msg, 3000); }
-const BUILD = "3.7"; const FIXED_CODE = "UHHF"; // permanent room code for Bulmaim's games
+const BUILD = "3.9"; const FIXED_CODE = "UHHF"; // permanent room code for Bulmaim's games
 function makeCode() { if (FIXED_CODE) return FIXED_CODE; let c = ""; for (let i = 0; i < 4; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]; return c; }
 
 // ---- Fallback relay: when phones can't link directly (strict mobile/Wi-Fi networks), send game
@@ -2622,7 +2703,7 @@ function frame(now) {
     portalMeshes.forEach(m => m.rotation.z += dt);
     menuBots.forEach(b => { if (b.userData.mixer) b.userData.mixer.update(dt); if (b.userData.parts.legs) { b.userData.gait = (b.userData.gait || 0) + dt * 0.8; poseWalker(b.userData, b.userData.gait, 0.15); } if (b.userData.parts.flames) b.userData.parts.flames.forEach(f => f.scale.set(1, 0.7 + Math.random() * 0.7, 1)); });
   }
-  updEffects(dt); updDebris(dt); updWeather(dt); lavaMat.emissiveMap.offset.x += dt * 0.03; lavaMat.emissiveIntensity = 1.2 + Math.sin(performance.now() * 0.002) * 0.25; musicTick(dt);
+  aimAssist(dt); updEffects(dt); updDebris(dt); updWeather(dt); lavaMat.emissiveMap.offset.x += dt * 0.03; lavaMat.emissiveIntensity = 1.2 + Math.sin(performance.now() * 0.002) * 0.25; musicTick(dt);
   if (useBloom) composer.render(); else renderer.render(scene, camera);
   // automatic quality: drop effects if the phone struggles
   if (playing) {
