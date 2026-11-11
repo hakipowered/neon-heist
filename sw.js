@@ -1,5 +1,5 @@
 // Network-first cache so the game opens fast and updates arrive right away.
-const CACHE = "iron-tide-v3-6";
+const CACHE = "iron-tide-v3-7";
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))); self.clients.claim(); });
 self.addEventListener("fetch", e => {
